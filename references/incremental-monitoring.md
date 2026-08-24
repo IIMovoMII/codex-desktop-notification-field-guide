@@ -1,98 +1,50 @@
-# Incremental monitoring
+# 增量监听与生命周期
 
-Low overhead comes from reacting to filesystem changes and remembering exactly how far each relevant file has been read.
+[English](incremental-monitoring.en.md)
 
-## Event-driven wakeups
+目标是收到变化时处理新增内容，而不是每秒遍历全部历史。
 
-On Windows, use a directory-change mechanism such as <code>ReadDirectoryChangesW</code> through a well-tested library or a small native wrapper. Watch only discovered rollout roots.
+## 启动顺序
 
-A change notification says “something changed,” not what the final task state is. Use it to schedule a bounded incremental read.
+用户仍照常打开 Codex Desktop。推荐流程：
 
-Expect:
+1. 受信任的轻量 `SessionStart` 钩子写入唤醒事件；
+2. 钩子用互斥量确认观察程序是否存在；
+3. 如不存在，后台启动观察程序，然后立即退出；
+4. 观察程序先读取保存的游标，再枚举一次候选文件；
+5. 挂载 Windows 目录变化通知；
+6. 再做一次有界对账，补上“枚举与挂载之间”的变化。
 
-- duplicate notifications;
-- coalesced notifications;
-- rename pairs;
-- queue overflow;
-- changes before a watcher is fully attached.
+钩子不得等待 CC Connect 登录或网络发送。如果当前 Codex 版本没有可用且受信任的启动钩子，方案必须明确降级：经用户同意使用登录时启动的轻量观察程序，或要求手动启动；不能谎称正常图标启动已经自动接入。
 
-A periodic lightweight reconciliation should repair missed wakeups. It should compare directory metadata and known cursors, not parse every historical line.
+## 游标
 
-## Cursor model
+每个文件保存：规范路径或稳定文件编号、卷标识、已确认字节偏移、尾部半行、最后已处理事件编号、格式版本和更新时间。
 
-For each file, persist:
+读取时只处理偏移后的完整行。半行留到下次；文件被替换、缩短或身份改变时，停止沿用旧偏移，进行该文件的有界重建。第一次部署从明确的时间水位开始，避免把全部旧任务重发。
 
-- stable file identity when available;
-- normalized relative path;
-- last byte offset;
-- observed size and modification time;
-- trailing partial-line bytes;
-- session/task identity discovered from metadata;
-- parser schema version.
+## 变化通知与对账
 
-Read in binary mode, split complete newline-delimited records, and keep an incomplete tail until the next append. Decode with the proven file encoding.
+使用 Windows 目录变化通知或等价机制唤醒读取器。通知只说明“可能变化”，不能当作业务事件；合并重复唤醒。
 
-## Rotation, truncation and replacement
+缓存溢出、观察程序休眠或异常退出后，运行有界对账：只检查已知活跃目录和最近变化的文件，不扫描全部历史正文。溢出无法恢复时，进入“观察系统异常”，保留游标并提示本地诊断。
 
-If:
+## 资源边界
 
-- size is smaller than the cursor;
-- file identity changes;
-- the prefix hash no longer matches;
-- a rename produces a new path;
+- 空闲时阻塞等待事件，不用一秒轮询；
+- 数据库查询只取必要标题或归属字段；
+- 限制并发解析和单次读取字节数；
+- 正文默认不进入内存；
+- 记录空闲 CPU、磁盘读取量和队列大小，作为验收指标。
 
-then do not continue from the old offset. Reclassify the file, determine whether it is a new session or replacement, and rebuild from a safe bounded point.
+观察程序的健康计时可以发现自身停止工作，但不能把“很久没有事件”转成任务卡死。
 
-Never silently seek to the end of an unknown replacement; that can miss its terminal event.
+## Desktop 退出
 
-## Startup reconciliation
+检测到 Desktop 全部相关进程退出后，继续一个有界收尾期，处理末尾追加和发送队列。活动任务的结果交给[状态机](state-machine.md)决定。没有终态时必须产生“需要检查”，不能悄悄丢弃。
 
-At monitor startup:
+专用 CC Connect 进程可以在队列清空后与观察程序一起结束。共享 CC Connect 实例由其他用途拥有，观察程序只能断开连接，绝不能结束它。
 
-1. load cursor state;
-2. inventory only relevant roots;
-3. identify files changed since the last clean shutdown;
-4. validate identity and cursor bounds;
-5. read new bytes;
-6. attach watchers;
-7. repeat a narrow reconciliation to close the startup race.
+## 多实例与重启
 
-For first use, establish a baseline without notifying on every old completed task. Mark historical terminal events as seen, then notify only for work active after the baseline boundary.
-
-## Process lifecycle
-
-The monitor can start lazily from a Codex hook and exit when:
-
-- no Desktop process remains;
-- no relevant task is settling;
-- the outbox is durably saved;
-- the delivery bridge has no required local cleanup.
-
-Use an idempotent single-instance lock so several hooks do not launch several monitors. A manual health command remains useful for repair and diagnosis, but normal Desktop launch should not depend on it.
-
-## CPU and disk budget
-
-Measure:
-
-- filesystem wakeups per active turn;
-- bytes read per append;
-- periodic reconciliation duration;
-- idle CPU;
-- state-file write frequency;
-- startup catch-up time.
-
-Batch cursor persistence sensibly while ensuring that a crash only replays a small, deduplicated window.
-
-No task-status logic should scan unchanged files once per second.
-
-## SQLite use
-
-Use SQLite only for metadata that is not safely available elsewhere, such as a task title. Open read-only when possible, respect WAL semantics and use bounded retry for transient locks.
-
-Do not query full message bodies merely to build a notification. Cache a sanitized title once discovered.
-
-## Parser evolution
-
-Unknown JSONL record types should normally be ignored and counted. A changed record that affects terminal classification should fail safely into an “unknown evidence” path and be captured as a redacted fixture for review.
-
-Version the parser and record which Codex build produced each fixture.
+使用当前用户范围的互斥量保证只有一个观察程序。重复钩子只唤醒现有实例。异常重启后先恢复游标、状态和队列，再接受新事件；未确认通知可以重试，已确认通知不能重复。

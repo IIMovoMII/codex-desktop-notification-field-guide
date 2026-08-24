@@ -1,180 +1,193 @@
 <div align="center">
 
-# Codex Desktop Notification Field Guide
+# Codex Desktop 消息提醒经验指南
 
-**Turn Codex Desktop lifecycle signals into reliable, privacy-aware notifications without polling every conversation or asking another model to guess the state.**
+**把 Codex Desktop 的任务状态可靠地转成消息提醒，不遍历全部对话，也不让另一个模型猜它是不是卡住了。**
 
-[![Field Guide](https://img.shields.io/badge/type-field%20guide-6f42c1)](#what-this-is)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078D4)](#scope)
-[![Architecture](https://img.shields.io/badge/architecture-event--driven-0f766e)](#architecture)
-[![Validation](https://github.com/IIMovoMII/codex-desktop-notification-field-guide/actions/workflows/validate.yml/badge.svg)](https://github.com/IIMovoMII/codex-desktop-notification-field-guide/actions/workflows/validate.yml)
-[![License](https://img.shields.io/badge/license-MIT-16a34a)](LICENSE)
+[![经验指南](https://img.shields.io/badge/%E7%B1%BB%E5%9E%8B-%E7%BB%8F%E9%AA%8C%E6%8C%87%E5%8D%97-6f42c1)](#这是什么)
+[![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows-0078D4)](#适用范围)
+[![架构](https://img.shields.io/badge/%E6%9E%B6%E6%9E%84-%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8-0f766e)](#总体结构)
+[![开源许可](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF-MIT-16a34a)](LICENSE)
 
-[简体中文](README.zh-CN.md) · [Agent entrypoint](SKILL.md) · [Companion auth-switching guide](https://github.com/IIMovoMII/codex-auth-switching-field-guide)
+[English](README.en.md) · [给智能体的入口](SKILL.md) · [配套的账号切换指南](https://github.com/IIMovoMII/codex-auth-switching-field-guide)
 
 </div>
 
-## What this is
+## 这是什么
 
-This repository is **not a bot package or a preconfigured messaging bridge**. It is a field guide for building a local notification companion around the Codex Desktop version and event formats available on one machine. The delivery bridge is deliberately fixed to [CC Connect](https://github.com/chenhg5/cc-connect); the user must choose the CC Connect platform before deployment.
+这个仓库**不是现成的机器人程序，也不是预先配置好的消息桥**。它是一份实战经验指南：让开发者或编程智能体根据一台电脑上的 Codex Desktop 版本和事件格式，设计适合本机的提醒程序。消息桥固定使用 [CC Connect](https://github.com/chenhg5/cc-connect)，但部署前必须由用户亲自选择 CC Connect 要连接的通讯平台。
 
-The design emerged from a practical need: start Codex normally from the Desktop icon, leave a long task running, and receive a message when the task completes, fails, pauses or needs attention. Long silence is allowed. The monitor should not burn CPU scanning all history, expose prompts to a remote service, or launch Codex CLI in response to chat messages.
+它解决的是一个很实际的需求：用户照常点击桌面或开始菜单里的 Codex 图标，留下一个长任务，然后在任务完成、报错、被暂停或需要操作时收到提醒。
 
-## Concrete use cases
+程序不应该：
 
-| Situation | What a machine-specific implementation should achieve |
+- 因为任务安静了十分钟就说它卡死；
+- 每秒重新扫描全部历史；
+- 把提示词和对话发给远程服务；
+- 因为用户给机器人发了一句话，就自动启动 Codex CLI。
+
+## 具体使用场景
+
+| 你的情况 | 针对本机编写的方案应该做到 |
 | --- | --- |
-| Long Codex Desktop tasks run while the user is away | Send one useful notification when the task actually completes or needs attention |
-| API or relay work frequently encounters service, transport or authentication errors | Preserve structured error categories, fall back to an unknown-error alert and retry delivery safely |
-| The user pauses a task midway | Distinguish an explicit interruption from failure or normal completion |
-| A task needs approval or more user input | Notify once for each distinct actionable request and stop repeating after the task resumes |
-| Codex is always opened from the Desktop or Start-menu icon | Start the monitor lazily from a supported lifecycle hook and stop it with Desktop |
-| Official OAuth and API profiles are switched on the same machine | Preserve hooks and monitor state, and suppress false crash alerts during marked maintenance |
-| The messaging platform may change later | Keep detection independent from the selected platform while routing every outbound notification through CC Connect |
-| A legitimate task is quiet for hours | Continue observing without timer-based “stuck” notifications |
+| Codex Desktop 长任务运行时人不在电脑旁 | 只在任务真正完成或需要处理时发送一条有用提醒 |
+| API 或中转经常出现服务、网络、认证等不同报错 | 优先保留结构化错误类别，无法分类时仍发通用错误提醒，并可靠重试消息 |
+| 用户在任务中途主动暂停 | 把明确的用户中断与失败、正常完成区分开 |
+| Codex 自己停止、重试耗尽或自动暂停 | 有明确系统停止证据时单独提醒；证据不够时落到“需要检查”，不冒充用户暂停 |
+| 任务正在等待批准或补充输入 | 每个不同请求只提醒一次，恢复运行后不继续重复 |
+| 用户始终点击桌面或开始菜单图标打开 Codex | 利用当前版本支持的生命周期钩子按需启动监控，并随 Desktop 退出 |
+| 同一台电脑会切换官方 OAuth 与 API 档案 | 保留钩子和监控状态，并用维护标记避免计划内重启被误报 |
+| 以后可能更换通讯平台 | 状态识别不依赖某个平台，但所有出站提醒都统一经过 CC Connect |
+| 正常长任务几个小时没有本地事件 | 继续观察，但绝不根据安静时长发送“疑似卡死” |
 
-This guide is not a remote-control channel, a general employee-monitoring system, a replacement for Codex's own UI, or permission for inbound chat messages to execute local commands.
+本指南不是远程控制通道、员工监控系统或 Codex 界面的替代品，也不允许收到聊天消息后直接执行本机命令。
 
-## Deploy in one prompt
+## 一句话部署
 
-Copy this sentence into a new Codex task:
+把下面这段复制到一个新的 Codex 任务中：
 
 ~~~text
-Codex, read https://github.com/IIMovoMII/codex-desktop-notification-field-guide, begin with a read-only inspection of this Windows machine's Codex Desktop version, supported hooks, JSONL event shapes, process lifecycle and any existing CC Connect installation, then ask me which CC Connect platform to use before deployment, presenting at least official QQ Bot, Telegram, Feishu/Lark, personal Weixin and any other platforms supported by the detected version, clearly warning that personal Weixin is not recommended for unattended notifications because of its outbound-message and session limitations, then design and build a local CC Connect-backed notification companion that starts and stops with the normally launched Desktop app, recognizes completion, structured and unknown errors, user interruption, approval waits and input waits, never reports long silence as a stuck task, filters CLI and subagent sessions, keeps prompts and conversation bodies local, never launches Codex CLI from inbound chat, uses incremental file watching plus a durable deduplicated retrying outbox, pauses for my confirmation before installing CC Connect or writing live hooks, and finally validates the state races with synthetic events and one real outbound notification through my chosen platform.
+Codex，请按 https://github.com/IIMovoMII/codex-desktop-notification-field-guide 为这台 Windows 电脑构建一个 Codex Desktop 本地提醒程序。先只读盘点当前 Codex 版本、钩子来源与信任状态、JSONL 结构、来源标记、进程生命周期、CC Connect 版本和现有绑定；然后必须问我选择 QQ 官方机器人、Telegram、飞书／Lark、个人微信或当前版本支持的其他平台，并如实说明个人微信不适合可靠的无人值守提醒。保持我照常点击桌面或开始菜单图标：用轻量 `SessionStart` 钩子按需唤醒，`Stop` 只作为完成候选，`SessionEnd` 只做同步清理；同一配置层只保留一种钩子表达，并让我审查和信任。结合当前版本验证过的 JSONL 增量、钩子和进程证据，过滤 CLI、子代理和无关会话，识别完成、各类错误、用户中断、等待批准、等待输入，以及 Desktop 退出后仍无法分类的“需要检查”；绝不从长时间安静推断卡死。使用文件变化通知、持久游标、状态机、维护标记、去重队列、退避重试和死信，把提示词和正文留在本机；区分专用与共享 CC Connect，默认只向外发通知，聊天消息不能启动 Codex CLI。安装 CC Connect、绑定平台或写真实钩子前分别说明影响并征得我同意；最后用合成事件验证所有竞争、观察系统故障和隐私，再通过我选的平台发送一条真实测试通知。
 ~~~
 
-This is “deployment” by delegation, not a preconfigured bot installer. If the selected CC Connect platform, account or permission is missing, the agent should ask only for the necessary choice and keep credentials outside the conversation.
+这里的“部署”是把任务一次性交给 Codex，不是安装预先配置的机器人。如果缺少必要的通讯平台、账号或权限，Codex 应只询问必须由你选择的内容，并始终让凭据留在对话之外。
 
-## Why one signal is not enough
+## 为什么不能只看一个信号
 
-Hooks are fast, but their event coverage and timing can vary. JSONL contains richer evidence, but reading every file repeatedly is wasteful. Process exit is useful, but it cannot explain why a task stopped. Reliable classification comes from combining small, independent signals.
+钩子很快，但用途不同。当前[官方钩子说明](https://learn.chatgpt.com/docs/hooks)明确：`Stop` 可以提供本轮结束候选，`SessionEnd` 则可能在关闭、归档、删除或较长空闲后才触发，而且始终同步执行；它不能承担每轮完成提醒。JSONL 证据更丰富，但反复读取全部文件太浪费。进程退出只说明应用不在了，不能单独判断任务为何结束。
 
-## Architecture
+可靠方案需要把几个小信号组合起来，而不是相信某一个万能事件。
+
+## 总体结构
 
 ~~~mermaid
 flowchart LR
-    H[Codex hooks] --> N[Local normalizer]
-    J[Incremental JSONL tail] --> N
-    P[Desktop process state] --> N
-    N --> S[Per-task state machine]
-    S --> D[Deduplication and privacy filter]
-    D --> O[Durable outbox]
-    O --> A[CC Connect sender]
-    A --> Q[User-selected CC Connect platform]
+    H[Codex 钩子] --> N[本地事件整理]
+    J[JSONL 增量读取] --> N
+    P[Desktop 进程状态] --> N
+    N --> S[每个任务独立的状态机]
+    S --> D[去重与隐私裁剪]
+    D --> O[持久发送队列]
+    O --> A[CC Connect 发送器]
+    A --> Q[用户选定的 CC Connect 平台]
 ~~~
 
-Hooks wake the system quickly. Windows directory notifications wake the incremental reader when files change. A lightweight periodic reconciliation protects against missed events; it does not scan all conversations or infer failure from elapsed time. The state engine remains platform-neutral internally, but the supported delivery path always ends at CC Connect.
+钩子负责快速唤醒。Windows 文件变化通知在历史追加时唤醒增量读取器。低频校准只负责防止漏事件，不扫描所有对话，也不根据运行时长判断任务失败。状态机内部不依赖具体平台，但本指南支持的发送路线最终必须进入 CC Connect。
 
-## Events worth notifying
+## 哪些情况应该提醒
 
-| State | Evidence standard | Notify? |
+| 状态 | 证据要求 | 是否提醒 |
 | --- | --- | --- |
-| Completed | terminal completion event or validated stop state | Yes |
-| Structured error | explicit error type/status/code | Yes |
-| Unknown error | terminal failure with unclassified details | Yes, with a generic label |
-| User pause/interruption | explicit interruption evidence | Yes |
-| Waiting for approval | explicit approval request | Yes |
-| Waiting for input | explicit input request or version-proven equivalent | Yes |
-| Long-running silence | no terminal evidence | No |
-| Planned restart | maintenance marker from a cooperating tool | No crash alert |
+| 正常完成 | 明确的完成事件或经过验证的结束状态 | 是 |
+| 结构化错误 | 明确的错误类型、状态或编号 | 是 |
+| 未知错误 | 已确认失败，但暂时无法分类 | 是，使用通用错误名称 |
+| 用户暂停／中断 | 明确的中断证据 | 是 |
+| 系统停止／自动暂停 | 明确的非用户停止证据 | 是；无法证明原因时改为“需要检查” |
+| 等待批准 | 明确的批准请求 | 是 |
+| 等待输入 | 明确的输入请求，或当前版本已验证的等价事件 | 是 |
+| Desktop 退出但结果未知 | 有活动任务、无维护标记，收尾后仍无终态 | 是，提示“需要检查”，不称为失败 |
+| 长时间安静 | 没有任何终止证据 | 否 |
+| 计划内重启 | 其他本地工具写入了短期维护标记 | 不发崩溃提醒 |
+| 观察系统异常 | 钩子未信任、解析器不兼容、队列或消息桥故障 | 在本机显示；能投递时另发健康提醒 |
 
-Do not create a “probably stuck” notification from a timer alone. Codex tasks can legitimately run for hours. A timeout may be useful for monitoring the notifier itself, but not for judging the task.
+不要只靠计时器生成“疑似卡死”。Codex 的长任务可能正常运行几个小时。可以监控提醒程序自身是否健康，但不要用这一套逻辑给任务下结论。
 
-## Core design rules
+## 十条核心原则
 
-1. **Observe Desktop directly.** Do not require the user to launch Codex through a wrapper.
-2. **Use hooks as hints, not absolute truth.** Normalize them and corroborate terminal decisions when needed.
-3. **Tail only appended bytes.** Persist per-file cursors and use Windows filesystem notifications for wakeups.
-4. **Filter the source early.** Ignore CLI tasks, subagents and monitor-generated activity to prevent loops.
-5. **Model transitions per task.** Completion, failure, pause and waiting are states, not keywords.
-6. **Prefer structured errors.** Text matching is a fallback for version gaps; unknown failures still deserve a notification.
-7. **Keep prompts local.** A hook should write the minimum sanitized event and return immediately.
-8. **Queue before sending.** Remove a notification only after the channel confirms success.
-9. **Fix the bridge, choose the platform.** Delivery always uses CC Connect, while state detection remains independent from the selected CC Connect platform.
-10. **Coordinate planned maintenance.** An auth switcher or updater can write a short-lived marker so a planned restart is not reported as a crash.
+1. **直接观察 Desktop。** 不要求用户从包装脚本启动 Codex。
+2. **给钩子明确分工。** `SessionStart` 负责唤醒，`Stop` 只提供完成候选，`SessionEnd` 只做同步清理。
+3. **只读取文件新增部分。** 为每个文件保存游标，用 Windows 文件通知唤醒。
+4. **尽早过滤来源。** 排除 CLI、子代理和提醒程序自己产生的任务，避免循环。
+5. **按任务记录状态变化。** 完成、失败、暂停、等待和“需要检查”都是可收敛状态，不是几个关键词。
+6. **优先读结构化错误。** 文字匹配只补充版本差异；无法分类的错误也应提醒。
+7. **提示词留在本机。** 钩子只写最小、脱敏的事件，然后马上返回。
+8. **先入队，后发送。** 通讯平台确认成功后，才能从队列移除。
+9. **固定消息桥，再选择平台。** 所有提醒统一通过 CC Connect，状态判断不依赖用户最终选中的 CC Connect 平台。
+10. **计划内维护要协同。** 短期标记只抑制计划内退出，不能掩盖明确错误。
 
-## Guide map
+## 阅读路线
 
-| Read this | When you need to |
+| 文档 | 用途 |
 | --- | --- |
-| [Signal discovery](references/signal-discovery.md) | Inspect hooks, JSONL, processes and source identifiers |
-| [State machine](references/state-machine.md) | Combine signals without timer-based false alarms |
-| [Incremental monitoring](references/incremental-monitoring.md) | Build low-overhead Windows watching and durable cursors |
-| [CC Connect platform selection](references/cc-connect-platform-selection.md) | Ask the user which platform to connect and explain why personal Weixin is not recommended |
-| [Delivery](references/delivery.md) | Design the outbox, retries, CC Connect sender and one-way channel boundary |
-| [Privacy](references/privacy.md) | Minimize and redact local and remote data |
-| [Validation](references/validation.md) | Test state races, failures, restarts and channel outages |
+| [信号检查](references/signal-discovery.md) | 检查钩子、JSONL、进程和来源标记 |
+| [状态机](references/state-machine.md) | 组合信号并处理竞争，不制造计时误报 |
+| [增量监听](references/incremental-monitoring.md) | 在 Windows 上低开销监听并保存游标 |
+| [CC Connect 平台选择](references/cc-connect-platform-selection.md) | 询问用户具体连接哪个平台，并说明为什么不推荐个人微信 |
+| [消息投递](references/delivery.md) | 设计持久队列、重试、CC Connect 发送器和单向边界 |
+| [隐私](references/privacy.md) | 决定哪些内容可以离开本机 |
+| [验证](references/validation.md) | 测试状态竞争、重启和通讯平台故障 |
 
-## Starting with the normal Desktop icon
+## 照常点击 Codex 图标启动
 
-The user should keep launching Codex from the Desktop or Start menu. A safe integration can start lazily from a supported Codex lifecycle hook:
+用户应该继续从桌面或开始菜单打开 Codex。推荐用用户审查并信任的轻量 `SessionStart` 钩子按需启动：
 
-1. the hook records a small local event;
-2. it checks whether the local monitor is alive;
-3. if needed, it starts the monitor and delivery bridge in the background;
-4. it exits quickly;
-5. the monitor later stops after Desktop has exited and pending terminal events have settled.
+1. 钩子先写入一条很小的本地事件；
+2. 检查本地监控程序是否存在；
+3. 如有需要，在后台拉起观察程序；专用 CC Connect 可一起启动，共享实例只连接；
+4. 钩子立刻退出；
+5. Desktop 退出后先处理末尾事件与未知结果，再让观察程序结束；共享 CC Connect 继续运行。
 
-This avoids a startup wrapper and avoids a permanent boot-time service. Exact hook names and synchronous/asynchronous behavior must be tested against the installed Codex build.
+这样既不需要包装启动命令，也通常不需要开机常驻。钩子来源不能重复：同一层只选择 `hooks.json` 或内联 `[hooks]`；定义变化后要重新检查信任。`SessionEnd` 无论是否写了异步都会同步执行，不能拿来延迟启动或每轮通知。若当前版本没有可用启动钩子，只能在用户同意后改用登录时启动的轻量观察程序或手动启动，并明确说明自动接入没有实现。
 
-## CC Connect platform choice
+## 选择 CC Connect 平台
 
-CC Connect is required for this guide. Before installing or configuring it, ask the user which platform they want. Do not silently choose the platform from what happens to be installed.
+本指南必须使用 CC Connect。安装或写配置前，先问用户到底要连接哪个平台，不能因为电脑上碰巧有某个旧配置就替用户决定。
 
-| Choice | Practical guidance |
+| 选择 | 实际建议 |
 | --- | --- |
-| QQ Bot Official | Preferred for users who want QQ and can complete QQ developer verification; upstream uses the official API and requires no public IP |
-| Telegram | Good when Telegram is reachable; upstream uses long polling and requires no public IP |
-| Feishu/Lark | Good for stable personal or team workflows; upstream uses a WebSocket connection and requires no public IP |
-| QQ via OneBot | Possible, but requires a third-party OneBot implementation and has a different risk profile from official QQ Bot |
-| Personal Weixin via iLink | **Not recommended for unattended notification delivery** |
-| WeCom or another supported platform | Offer when it matches the user's actual account and installed CC Connect version |
+| QQ 官方机器人 | 用户主要使用 QQ 且能完成开发者认证时优先选择；上游使用官方接口，无需公网 IP |
+| Telegram | 网络可以访问 Telegram 时适合使用；上游采用长轮询，无需公网 IP |
+| 飞书／Lark | 适合稳定的个人或团队流程；上游使用 WebSocket，无需公网 IP |
+| QQ OneBot | 可以使用，但要额外部署 NapCat 等第三方 OneBot，风险与 QQ 官方机器人不同 |
+| 个人微信 iLink | **不推荐用于无人值守提醒** |
+| 企业微信或其他受支持平台 | 根据用户已有账号和当前 CC Connect 版本再决定 |
 
-**Why personal Weixin is not recommended:** the source environment observed delivery stopping after roughly ten unanswered outbound messages until the user interacted again. Upstream has also documented long-message delivery failures around ten messages ([issue #770](https://github.com/chenhg5/cc-connect/issues/770)), server-controlled session constraints ([issue #1087](https://github.com/chenhg5/cc-connect/issues/1087)), and a measured per-account send budget of roughly five to six separate messages per 24 hours, leading CC Connect to default to a budget of four ([merged PR #1643](https://github.com/chenhg5/cc-connect/pull/1643)). Exact behavior can change, but this is fundamentally unsuitable for dependable unattended alerts.
+**为什么不推荐个人微信：** 某个本机环境曾观察到累计约十条未回复提醒后受限，但这不是可推广的平台规则。[问题 #770](https://github.com/chenhg5/cc-connect/issues/770)记录的是长内容／分段发送出现 `ret=-2`，不能用来证明“十条上限”；[问题 #1087](https://github.com/chenhg5/cc-connect/issues/1087)曾提出 `context_token` 过期／未持久化的历史诊断。后来合并的 [PR #1643](https://github.com/chenhg5/cc-connect/pull/1643)通过实测把 `ret=-2 prepare failed` 解释为账号级主动发送预算／限流：约 24 小时五到六条独立消息可能触发，默认安全预算设为四条，受限期间继续重试还可能延长惩罚。数字会随服务端和版本变化，但这条路线本质上不适合必须可靠到达的无人值守通知。
 
-Personal Weixin and WeCom are different CC Connect platforms. The warning above targets personal Weixin through iLink; evaluate WeCom separately.
+个人微信与企业微信是 CC Connect 中两个不同的平台。上面的警告针对个人微信 iLink，企业微信应单独评估，不能混为一谈。
 
-After the user chooses, keep a narrow local sender contract:
+用户选定平台后，再把本地发送接口限制得很窄：
 
 ~~~text
-send(notification) -> accepted delivery identifier
-healthcheck() -> channel status
-classify_failure(error) -> retryable or permanent
+发送通知 -> 返回已接受的消息编号
+健康检查 -> 返回渠道状态
+分类失败 -> 可重试或永久失败
 ~~~
 
-Platform quotas, reply gates and account policies belong in the CC Connect delivery boundary, not the Codex state machine. Configure one chosen platform and prove one real outbound notification before adding another.
+平台额度、回复限制和账号规则应该留在 CC Connect 发送边界内部，不要污染 Codex 状态机。先配置一个用户选定的平台并完成一次真实出站验证，确认稳定后再考虑增加第二个平台。
 
-Outbound-only is the safer default. Receiving a chat message should not launch Codex CLI or execute commands unless the user designs and secures a separate control plane.
+默认只允许向外提醒。除非用户另外设计并保护了一套控制通道，否则收到聊天消息不应启动 Codex CLI 或执行命令。
 
-## Hard-won lessons
+## 实战中最容易踩的坑
 
-- A hook can run synchronously even when its configuration looks asynchronous; measure actual behavior and keep the hook tiny.
-- Completion and interruption events can race. Delay final classification briefly and use precedence rules.
-- A process disappearing does not prove the active task failed.
-- New JSONL records can arrive after an apparent stop event.
-- Reading thread titles from SQLite is often enough; message bodies need not enter the notification pipeline.
-- Polling file trees every second scales poorly and creates needless disk work. Directory notifications plus cursor-based tailing are calmer and more reliable.
-- A durable outbox prevents a transient messenger outage from losing a task result.
-- A bridge can support many platforms while one platform is still a poor fit; personal Weixin's outbound limits make it unsuitable as the default notification route.
-- Delivery deduplication needs a stable event key, not just matching message text.
-- Account/API switching should preserve hooks and monitor settings because the auth switcher patches only its owned fields.
+- `SessionEnd` 官方定义就是同步执行，而且不是每轮完成钩子；把联网发送或后台启动塞进去会拖慢退出并造成误判。
+- 钩子定义变更可能触发重新审查；未信任的钩子不会因为文件存在就自动工作。
+- 完成和用户中断事件可能先后竞争，需要很短的收尾窗口和明确的优先级。
+- 进程消失不代表当前任务一定失败，但收尾后仍没有证据时必须通知“结果未知，需要检查”。
+- 看似已经停止后，JSONL 仍可能追加末尾记录。
+- 通知通常只需要任务标题；很多时候只读 SQLite 标题即可，没必要读取正文。
+- 每秒轮询整棵文件树既浪费磁盘，也不可靠；文件变化通知加增量游标更合适。
+- 持久队列能保证通讯平台短暂故障时不丢结果。
+- 消息桥支持很多平台，不代表每个平台都适合提醒；个人微信的主动发送限制使它不应成为默认方案。
+- 去重应使用稳定的事件编号，不能只比较消息文字。
+- 账号/API 切换器只有坚持补丁式修改并保留钩子时，提醒程序才会跨模式继续工作；切换后仍要跑一条真实通知。
 
-## Using this with a coding agent
+## 如何交给编程智能体使用
 
-Point an agent at [SKILL.md](SKILL.md). It should inspect the installed Codex version, local event shapes and CC Connect state, then ask the user to choose a CC Connect platform before implementation. It should explain the personal-Weixin warning, propose a state model, generate synthetic fixtures and implement the notifier only after the platform choice. It should not copy private rollout content into prompts or install CC Connect without explicit user approval.
+让智能体阅读 [SKILL.md](SKILL.md)。它应先检查当前 Codex 版本、本地事件格式和 CC Connect 状态，再询问用户要连接的 CC Connect 平台，说明个人微信风险后才继续实施。未经明确同意，不应复制真实对话内容，也不应擅自安装 CC Connect。
 
-## Scope
+## 适用范围
 
-The guide focuses on Codex Desktop on Windows and local, one-way notifications. Exact hook events, process names and JSONL schemas are version-sensitive. Re-run discovery and tests after Codex upgrades.
+本指南主要面向 Windows 上的 Codex Desktop 和本地单向提醒。钩子事件、进程名称和 JSONL 结构都可能随版本变化。Codex 升级后应重新检查并运行测试。
 
-## Security
+## 安全
 
-Messaging credentials, user IDs, private conversation text and local absolute paths must never enter the repository. The monitor should redact errors and send only the minimum useful result. See [SECURITY.md](SECURITY.md).
+通讯平台凭据、用户编号、真实对话和本地绝对路径都不能进入仓库。监控程序应在本地裁剪错误，只发送完成判断所需的最少内容。详见 [SECURITY.md](SECURITY.md)。
 
-## Contributing
+## 参与改进
 
-Bring reproducible signals, race conditions, state fixtures and delivery patterns. Include Codex version context and a validation method. See [CONTRIBUTING.md](CONTRIBUTING.md).
+欢迎补充可复现的信号、状态竞争、测试样例和可靠投递方法。请同时注明 Codex 版本范围和验证方式。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## License
+## 许可
 
-[MIT](LICENSE). Messaging platform terms, quotas and credential handling remain the operator's responsibility.
+[MIT](LICENSE)。通讯平台规则、额度与凭据安全仍由实际操作者负责。

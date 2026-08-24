@@ -1,133 +1,74 @@
-# Validation
+# 验证与闭环清单
 
-Test signal classification, resource use, privacy and delivery as one system.
+[English](validation.en.md)
 
-## Fixture set
+信号分类、资源、隐私、投递与恢复必须作为一个系统验收。
 
-Create synthetic, version-labeled fixtures for:
+## 合成夹具
 
-- normal completion;
-- structured server error, including retryable service failures;
-- malformed or unfamiliar error;
-- user interruption;
-- approval request and resume;
-- input request and resume;
-- completion followed closely by interruption;
-- interruption followed closely by completion;
-- late JSONL append after a hook;
-- Desktop process exit during work;
-- planned maintenance exit;
-- long silent task;
-- CLI task;
-- subagent task;
-- file truncation, replacement and partial line.
+为当前 Codex 版本从零构造：正常完成、401／403、404、429、5xx、网络超时、模型与工具错误、一次错误后自动重试成功、重试耗尽、未知错误、用户中断、系统自动暂停、批准请求与恢复、输入请求与恢复、完成／中断两种先后顺序、钩子后的晚到 JSONL、活动中退出 Desktop、计划内维护、长时间正常安静、CLI、子代理、文件半行／截断／替换。
 
-Fixtures must not come from private conversations.
+## 状态断言
 
-## State assertions
+- 每个任务轮次只有一条最终通知，必要更正使用同一关联编号；
+- 明确失败可以覆盖尚未提交的弱完成候选；
+- 暂时错误后恢复成功不会误发失败；重试耗尽或自动暂停会产生一次正确终态；
+- 用户中断和系统停止不会互相冒充，无法证明时进入“需要检查”；
+- 等待状态按请求编号只提醒一次，恢复后仍可到达终态；
+- 长时间安静绝不提醒；
+- 进程退出有终止证据时按证据分类，没有时最终进入“需要检查”；
+- 维护标记只抑制计划内退出，不能盖住明确错误；
+- CLI、子代理和不在范围内的会话被过滤；
+- 未知格式使观察系统暂停自动分类，而不是猜测。
 
-Verify:
+所有竞争都要按两种顺序运行。
 
-- one terminal notification per task turn;
-- explicit failures are not overwritten by weaker completion candidates;
-- waiting states notify once per distinct request;
-- resumed work can later reach a terminal state;
-- long silence does not notify;
-- process exit alone does not invent an error;
-- maintenance markers suppress only the intended crash signal;
-- CLI and subagent activity is filtered;
-- unknown terminal failures still produce a useful generic alert.
+## 钩子断言
 
-Run race cases in both event orders.
+- 当前层只使用 `hooks.json` 或内联 `[hooks]`；
+- 用户已经审查并信任钩子，修改定义后能发现需要重新审查；
+- `SessionStart` 钩子快速返回且只产生一个观察程序；
+- `Stop` 只进入收尾候选；
+- `SessionEnd` 同步执行且不承担每轮完成或后台启动；
+- 钩子未信任、超时或格式不兼容都有本地可见诊断。
 
-## Monitoring assertions
+## 监听断言
 
-Verify:
+- 只解析追加字节，半行可跨重启恢复；
+- 文件替换和截断使旧游标失效；
+- 通知溢出触发有界对账；
+- 首次安装不重放全部旧任务；
+- 启动顺序补上挂载监听前的竞争窗口；
+- 空闲 CPU 与磁盘读取满足事先约定预算；
+- Desktop 退出并收尾后观察程序按设计停止。
 
-- only appended bytes are parsed;
-- partial lines survive restart;
-- file replacement invalidates the old cursor;
-- directory notification overflow triggers bounded reconciliation;
-- first use does not replay all old tasks;
-- monitor startup closes the watcher-attachment race;
-- idle CPU and disk reads stay within a measured budget;
-- multiple hooks still produce one monitor process;
-- the monitor exits cleanly after Desktop and pending work stop.
+## 投递断言
 
-## Delivery assertions
+- 通知先持久化，再发送；
+- 成功确认后只标记一次；
+- 临时故障退避，永久故障进入可见死信；
+- 重启不丢队列，超时不造成无限重复；
+- 平台额度被遵守；
+- 专用 CC Connect 可随观察程序启停；共享实例绝不被结束；
+- 更换平台时队列按用户选择处理；
+- 入站聊天不能启动 Codex 或本机命令。
 
-Verify:
+## 生命周期实测
 
-- notification is durable before send;
-- successful delivery removes or marks it once;
-- temporary outage retries with backoff;
-- permanent auth failure enters a visible dead-letter state;
-- restart does not lose queued items;
-- timeout uncertainty does not create uncontrolled duplicates;
-- platform quota is honored;
-- switching user-selected CC Connect platforms preserves or deliberately handles queued items;
-- inbound chat content cannot launch Codex or local commands.
+从完全停止开始：正常点击 Codex 图标，触发受支持的启动钩子，确认一个观察程序；完成、报错、中断、等待各跑一例并收到正确通知；退出 Desktop，确认末尾状态收敛；再在官方 OAuth 与 API 中转切换后重复。计划内重启不得误报，钩子与无关配置必须保留。
 
-## Privacy assertions
+如果使用专用 CC Connect，验证它在队列完成后退出；如果共享，验证它继续运行。
 
-Inject synthetic:
+## 隐私断言
 
-- API keys;
-- OAuth-like tokens;
-- signed URLs;
-- email addresses;
-- absolute home paths;
-- long provider errors;
-- tool arguments.
+注入合成 API Key、OAuth 样式令牌、签名网址、邮箱、用户目录、长错误和工具参数，断言它们不出现在钩子事件、任务状态、发送队列、平台消息、普通日志和测试快照中。
 
-Assert they do not appear in:
+## 观察系统故障
 
-- hook spool;
-- task-state store;
-- outbox;
-- channel payload;
-- normal logs;
-- test snapshots.
+分别制造钩子未信任、解析器版本不符、监听溢出无法对账、CC Connect 认证失败、额度耗尽和死信积压。每种情况必须：停止错误分类或发送、保留可恢复状态、在本机显示原因、提供重试／重新绑定／升级解析器入口。
 
-## Lifecycle assertions
+## 升级门禁
 
-From a clean stopped state:
+Codex 或 CC Connect 更新后，重新盘点钩子输入与时序、JSONL 格式、来源过滤、进程识别和平台限制；运行全部合成测试和一条真实通知后再启用新解析器。
 
-1. launch Codex using the normal Desktop or Start-menu entry;
-2. trigger the first supported lifecycle hook;
-3. confirm one background monitor and the required CC Connect process start;
-4. complete a synthetic task and receive one notification;
-5. exit Desktop;
-6. confirm terminal events settle and helpers stop;
-7. repeat after an auth/API profile switch.
-
-The user should not need a wrapper command for normal use.
-
-## Upgrade gate
-
-After a Codex upgrade:
-
-1. rerun signal discovery;
-2. compare hook inputs and timing;
-3. generate fresh redacted fixtures;
-4. compare JSONL schemas and source identifiers;
-5. rerun state and race tests;
-6. verify process detection;
-7. test one real outbound notification;
-8. enable the updated parser only after the gate passes.
-
-## Release evidence
-
-Record:
-
-- Windows and Codex versions;
-- supported states;
-- source-filter result;
-- fixture and race-test result;
-- idle resource measurements;
-- retry and restart result;
-- privacy scan result;
-- selected CC Connect platform and known quota limits;
-- known ambiguous states.
-
-Do not include private task IDs, credentials, local paths or conversation bodies.
+交付报告只记录版本、支持状态、夹具结果、资源指标、重试结果、隐私扫描、用户选定平台和已知模糊状态，不含真实任务编号、凭据、路径或正文。

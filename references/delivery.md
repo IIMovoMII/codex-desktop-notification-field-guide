@@ -1,114 +1,44 @@
-# Delivery through CC Connect
+# 消息投递
 
-Reliable notification delivery is a queueing problem with CC Connect as the required bridge and a user-selected CC Connect platform.
+[English](delivery.en.md)
 
-## Durable outbox
+状态识别与通讯平台必须隔离。状态机只生成统一通知，发送器负责把它交给 CC Connect。
 
-Persist a notification before attempting network delivery. A record can contain:
+## 统一通知
 
-~~~text
-notification_id
-deduplication_key
-created_at
-task_title_redacted
-state
-summary_redacted
-attempt_count
-next_attempt_at
-cc_connect_platform
-schema_version
-~~~
+建议字段：通知编号、任务哈希、轮次哈希、状态类别、脱敏标题、可选模型、可选回复摘录、创建时间、去重键、尝试次数、下次尝试时间、目标平台、格式版本。
 
-Do not include prompts, tool arguments, credentials or raw rollout records.
+默认不包含提示词、工具参数、凭据、完整错误正文和原始 JSONL。回复摘录必须由用户主动开启，并先在本地脱敏与限长。
 
-Use atomic state updates or a small transactional database. After a crash, every accepted-but-unconfirmed item should be safe to retry.
+## 持久发送队列
 
-## CC Connect sender contract
+状态决定后先把通知持久写入队列，再尝试发送。CC Connect 明确接受后，才标记为已投递。程序崩溃或系统重启后，所有“已接受但未确认”的项目都能安全重试。
 
-The local CC Connect sender should expose:
+本地去重键不能只依赖消息文字，应包含任务、轮次、状态和证据编号。平台没有幂等能力时，网络超时后存在极小重复风险；要保留同一通知编号，不能无限生成新消息。
 
-- health check;
-- send one normalized notification;
-- classify retryable versus permanent failure;
-- return a provider delivery identifier when available;
-- redact its own error details;
-- report quota or authorization status.
+## 发送器边界
 
-The Codex state machine should not know platform-specific request shapes. The sender translates the normalized notification into the selected CC Connect project and session.
+发送器只提供：健康检查、发送一条统一通知、区分可重试与永久失败、返回投递编号、报告认证与额度状态、脱敏自己的错误。
 
-## Retry policy
+临时网络或服务错误使用有上限的指数退避与随机抖动，并遵守平台返回的重试时间。永久认证错误、目标不存在或额度拒绝进入死信：保留脱敏记录，停止快速重试，在本机显示健康警告。
 
-For retryable failures:
+任务的 503 等错误与“QQ 发送失败”是两类故障。前者生成一条任务错误通知，后者决定这条通知如何留在队列，不能互相覆盖。
 
-- use bounded exponential backoff with jitter;
-- honor a provider retry-after value;
-- persist the next attempt time;
-- cap rapid retries;
-- keep the item in the outbox.
+## CC Connect 生命周期
 
-For permanent failures:
+部署时明确选择：
 
-- retain a redacted dead-letter record;
-- surface a local health warning;
-- do not loop forever;
-- never include the channel secret in the warning.
+- **专用实例：** 只为提醒服务。观察程序可以启动它，并在 Desktop 已退出、收尾完成且队列处理完后结束它。
+- **共享实例：** 还服务其他机器人或任务。提醒程序只连接／断开，绝不能启动时改写其公共配置，也不能随 Codex 退出而结束它。
 
-Remove or mark an item delivered only after confirmed acceptance. If a provider cannot offer idempotency, keep the local deduplication key and tolerate the narrow uncertainty after a network timeout.
+两种模式都要检测未认证、二维码／绑定过期、平台额度耗尽和版本不兼容。消息桥不可用时保留队列，并通过本地状态页、托盘提示或日志摘要暴露原因。
 
-## Rate and reply limits
+优先为提醒建立专用 CC Connect 项目和固定目标。发送器应把统一通知原样交给已验证的出站路径，不再调用另一个模型扩写，也不把 CC Connect 的内部日志、提示词或代理回复当成通知内容。若复用已有项目，必须先证明它不会因通知而触发额外代理对话；做不到就改用专用项目。真实测试要核对“用户收到的文字”与本地队列正文一致。
 
-Messaging platforms can impose:
+## 单向边界
 
-- daily quotas;
-- per-minute quotas;
-- limits after several unanswered messages;
-- binding requirements;
-- message-length limits;
-- account-review or bot-policy restrictions.
+本指南只负责向外提醒，忽略入站聊天。若将来需要远程控制，必须另行设计发送者白名单、防重放、明确命令语法、敏感操作确认、审计和限速；在此之前，入站消息不得启动 Codex CLI、PowerShell 或其他本机程序。
 
-Measure the selected CC Connect platform and encode its limits in the sender boundary. Do not generalize one platform's behavior to another. Personal Weixin is not recommended for this workload; see [CC Connect platform selection](cc-connect-platform-selection.md).
+## 更换平台
 
-If notifications can be coalesced without losing meaning, combine several terminal results into a digest only when the user explicitly prefers it.
-
-## CC Connect boundary
-
-When using CC Connect:
-
-- manage its lifecycle independently from task classification;
-- verify that the bridge is bound to the intended outbound conversation;
-- store its credentials in a restricted runtime directory;
-- treat bridge stdout as untrusted and redact before logging;
-- health-check it before draining the outbox;
-- keep the queue when the bridge is offline.
-
-Do not make the monitor dependent on an interactive QR flow after every restart. Binding should be a deliberate first-use operation with a clear expired-state recovery path.
-
-## Outbound-only boundary
-
-The notifier's CC Connect integration sends notifications and ignores inbound chat content.
-
-Inbound control would require a separate security design:
-
-- authenticated sender allowlist;
-- replay protection;
-- explicit command grammar;
-- user confirmation for sensitive actions;
-- audit log;
-- rate limiting;
-- no arbitrary shell execution.
-
-Unless those controls are intentionally designed and reviewed, an inbound message must never launch Codex CLI or execute local actions.
-
-## Changing CC Connect platforms
-
-Keep the outbox's normalized notification schema independent of the platform. To move from one messenger to another:
-
-1. pause delivery;
-2. ask the user to choose and configure the new CC Connect platform;
-3. choose how to handle queued items;
-4. switch the CC Connect platform and destination transactionally;
-5. send a synthetic test;
-6. disable the old platform credential when the user no longer needs it;
-7. resume the queue.
-
-State detection and JSONL cursors should not change.
+暂停发送，询问新平台并完成绑定；让用户选择旧队列是保留、迁移还是丢弃；事务式切换目标，发送合成测试，确认后再恢复队列。状态机和 JSONL 游标无需随平台改变。

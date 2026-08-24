@@ -1,62 +1,48 @@
-# CC Connect platform selection
+# CC Connect 平台选择
 
-[CC Connect](https://github.com/chenhg5/cc-connect) is the required delivery bridge for this guide. The user still owns the platform choice. Ask before installing, binding or changing any channel.
+[English](cc-connect-platform-selection.en.md)
 
-## Required first question
+[CC Connect](https://github.com/chenhg5/cc-connect)是本指南固定的消息桥，但具体通讯平台由用户决定。只读盘点后、安装或绑定前，必须先询问。
 
-After read-only discovery, ask:
+## 必问问题
 
-> Which CC Connect platform should receive Codex Desktop notifications: official QQ Bot, Telegram, Feishu/Lark, personal Weixin, WeCom, or another platform supported by the installed version?
+> 你希望把 Codex Desktop 提醒发到哪个 CC Connect 平台：QQ 官方机器人、Telegram、飞书／Lark、个人微信、企业微信，还是当前版本支持的其他平台？
 
-Show only platforms that are actually supported by the detected CC Connect release. Explain the practical differences and wait for a selection. Do not infer the answer from stale config, an old binding or the user's operating system.
+只列出检测到的 CC Connect 版本真实支持的平台，并说明搭建成本、网络条件和限制。旧绑定不能代替用户选择。
 
-## Recommended order
+## 常见选择
 
-| Platform | Connection and setup | Guidance |
+| 平台 | 连接方式与条件 | 建议 |
 | --- | --- | --- |
-| [QQ Bot Official](https://github.com/chenhg5/cc-connect/blob/main/docs/qqbot.md) | Official API v2 over WebSocket; no public IP; developer verification required | Preferred QQ route when the user can register an official bot |
-| [Telegram](https://github.com/chenhg5/cc-connect/blob/main/docs/telegram.md) | Bot API long polling; no public IP; requires Telegram network access | Good general-purpose choice |
-| [Feishu/Lark](https://github.com/chenhg5/cc-connect/blob/main/docs/feishu.md) | WebSocket; no public IP; app setup and permissions required | Good stable choice for personal or team workflows |
-| [QQ OneBot](https://github.com/chenhg5/cc-connect/blob/main/docs/qq.md) | Requires NapCat or another OneBot implementation | Offer only after explaining the extra component and non-official risk |
-| [Personal Weixin](https://github.com/chenhg5/cc-connect/blob/main/docs/weixin.md) | Personal WeChat through iLink HTTP long polling and QR login | Do not recommend for unattended notifications |
-| WeCom or another built-in platform | Depends on the installed release | Evaluate its official setup guide and the user's account situation |
+| [QQ 官方机器人](https://github.com/chenhg5/cc-connect/blob/main/docs/qqbot.md) | 官方接口与 WebSocket；无需公网 IP；需要开发者认证 | 用户主要使用 QQ 时优先考虑 |
+| [Telegram](https://github.com/chenhg5/cc-connect/blob/main/docs/telegram.md) | Bot API 长轮询；无需公网 IP；需要可访问 Telegram | 通用且简单 |
+| [飞书／Lark](https://github.com/chenhg5/cc-connect/blob/main/docs/feishu.md) | 长连接；无需公网 IP；需要应用权限 | 适合稳定个人或团队流程 |
+| [QQ OneBot](https://github.com/chenhg5/cc-connect/blob/main/docs/qq.md) | 还需 NapCat 等 OneBot 组件 | 说明额外组件和非官方风险后再选 |
+| [个人微信](https://github.com/chenhg5/cc-connect/blob/main/docs/weixin.md) | iLink、二维码登录 | **不推荐无人值守提醒** |
+| 企业微信或其他内置平台 | 取决于当前版本 | 按对应官方说明单独评估 |
 
-The upstream repository supports more platforms than this shortlist. The shortlist is a decision aid, not a frozen capability list.
+## 为什么不推荐个人微信
 
-## Personal Weixin warning
+必须把几类证据分开，不能拼成一个“固定十条”的结论：
 
-Personal Weixin through iLink has server-controlled outbound and session constraints that conflict with reliable unattended notification delivery:
+- 某个本机环境曾观察到累计约十条未回复提醒后发送受限。这只是特定时间、账号和版本的现场现象，不能推广成平台规则。
+- [问题 #770](https://github.com/chenhg5/cc-connect/issues/770)记录的是长内容／分段发送出现 `ret=-2` 中断，**并不能证明大约十条消息的上限**。
+- [问题 #1087](https://github.com/chenhg5/cc-connect/issues/1087)曾把长时间未活动后的失败归因于 `context_token` 持久化或过期；这是历史诊断，不应继续当作最终根因。
+- 后来合并的 [PR #1643](https://github.com/chenhg5/cc-connect/pull/1643)通过实测把 `ret=-2 prepare failed` 解释为账号级主动发送预算／限流：约 24 小时五到六条独立消息可能触发，默认安全预算设为四条；受限期间继续重试还可能延长惩罚。二维码重新登录会形成新账号／预算，但这不是可靠无人值守恢复方案。
 
-- The source implementation observed that delivery stopped after roughly ten accumulated unanswered notifications and resumed only after user interaction.
-- [Upstream issue #770](https://github.com/chenhg5/cc-connect/issues/770) reported long agent output failing after roughly ten messages.
-- [Upstream issue #1087](https://github.com/chenhg5/cc-connect/issues/1087) documented server-controlled context/session limits that affect proactive sends after inactivity.
-- [Merged upstream PR #1643](https://github.com/chenhg5/cc-connect/pull/1643) recorded live measurements of a roughly five-to-six-separate-message budget per account per 24 hours and introduced a default safe budget of four.
+数字仍可能随微信服务端与 CC Connect 版本变化，稳定结论只有一个：个人微信不适合必须可靠到达的无人值守提醒。个人微信和企业微信不是同一平台，后者要单独评估。
 
-The exact number and recovery behavior can change across Weixin and CC Connect versions. The product conclusion remains: **do not select personal Weixin as the default for completion and error notifications that must arrive without user interaction.**
+如果用户仍坚持使用个人微信：记录已知限制、检查当前版本的额度保护、尽量合并通知、对拒绝投递保留本地队列、测试多条消息，并明确不承诺持续可靠到达。
 
-If the user explicitly insists:
+## 绑定闭环
 
-1. explain the warning and record the choice;
-2. verify the installed CC Connect version;
-3. minimize messages and prefer a single final summary;
-4. configure the upstream quota controls available in that version;
-5. test beyond one happy-path message;
-6. make local queue retention explicit when the platform refuses delivery;
-7. never promise dependable unattended delivery.
+1. 查看已安装版本与项目，不显示令牌。
+2. 展示真实候选和个人微信警告，等待用户选择。
+3. CC Connect 未安装时，说明来源、文件、权限与卸载方式并获得确认。
+4. 建立专用通知项目或选择现有项目，并确认它是专用还是共享实例。
+5. 用户通过本地界面录入凭据；对话中不接收秘密。
+6. 把提醒端限制为单向发送，即使 CC Connect 支持交互式代理。
+7. 发送一条合成通知，要求用户确认可见。
+8. 记录平台、CC Connect 版本和脱敏投递编号。
 
-Personal Weixin is not WeCom. WeCom uses a separate platform and protocol; assess it independently.
-
-## Selection and binding flow
-
-1. Inspect the installed CC Connect version and current projects without displaying tokens.
-2. Present supported candidates and the personal-Weixin warning.
-3. Wait for the user's explicit platform choice.
-4. If CC Connect is absent, explain the upstream source, installation method, local files and permissions, then obtain confirmation before installation.
-5. Create or select a dedicated notification project and outbound destination.
-6. Let the user enter bot credentials through CC Connect's local UI or another local secret path; never ask for secrets in chat.
-7. Restrict allowed senders and administrative commands.
-8. Keep the Codex notifier outbound-only even if CC Connect itself supports interactive agent sessions.
-9. Send one synthetic notification and require visible confirmation from the user.
-10. Record the platform, CC Connect version and verified delivery ID without storing the credential.
-
-Configure one platform first. Add a second only after the first path, queue behavior and failure handling are proven.
+绑定失败时不启用“已部署”状态：保留本地队列，显示认证、额度、网络或目标会话类别，让用户修复或改选平台。先打通一个平台，再增加第二个。

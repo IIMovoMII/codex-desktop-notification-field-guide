@@ -1,39 +1,17 @@
-# Contributing
+# 参与改进
 
-Contributions should improve the observation and delivery method without turning this repository into a preconfigured bot for one machine.
+[English](CONTRIBUTING.en.md)
 
-## Good contributions
+欢迎补充可复现的 Codex Desktop 信号、状态竞争、低开销监听方法和 CC Connect 投递经验。
 
-- a reproducible Codex hook or JSONL observation with version context;
-- a synthetic fixture for a race or error case;
-- a more reliable state transition;
-- a lower-overhead monitoring technique;
-- a privacy or redaction improvement;
-- a platform-neutral state pattern that still delivers through CC Connect;
-- a measurable validation method.
+提交时请写明：
 
-## Please avoid
+- Windows、Codex Desktop 和 CC Connect 版本；
+- 触发步骤与期望状态；
+- 使用的是钩子、JSONL、进程还是组合证据；
+- 合成测试结果和已知限制；
+- 是否改变了隐私或安全边界。
 
-- bot secrets, binding codes, user IDs or private channel endpoints;
-- real prompts, responses or rollout files;
-- absolute local paths or usernames;
-- instructions that allow inbound chat to execute arbitrary local actions;
-- platform claims without current evidence;
-- generated bulk text that has not been technically reviewed.
+不要提交真实对话、账号、凭据、二维码、私人接口或用户绝对路径。新增状态必须同时给出识别证据、冲突优先级、去重规则、恢复动作和验收条件，不能只增加一个关键词判断。
 
-## Pull request checklist
-
-1. Explain the observed problem and environment.
-2. Distinguish measured behavior from inference.
-3. Add or update a synthetic fixture description.
-4. State how the change affects privacy and duplicate delivery.
-5. Update both language pages when their shared meaning changes.
-6. Run:
-
-~~~text
-python scripts/validate_pack.py
-~~~
-
-7. Confirm that no credential, identifier or private conversation appears in the diff.
-
-By contributing, you agree that your contribution is licensed under the MIT License.
+修改默认中文文档时，请同步修正英文次选文档中会造成事实冲突的内容。运行仓库校验后再提交。

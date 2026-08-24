@@ -1,137 +1,92 @@
-# State machine
+# 状态机与处置闭环
 
-The state machine converts imperfect, out-of-order evidence into one user-facing result per task.
+[English](state-machine.en.md)
 
-## Normalized events
+状态判断按“任务＋轮次”隔离。不同来源的事件先统一，再进入状态机；关键词不能直接发送通知。
 
-Translate version-specific hooks and JSONL records into a small internal vocabulary:
+## 状态
 
-~~~text
-task_seen
-turn_started
-progress
-completion_candidate
-structured_error
-unknown_error
-user_interrupted
-approval_requested
-input_requested
-desktop_started
-desktop_exited
-maintenance_started
-maintenance_ended
-~~~
+| 状态 | 含义 | 是否终态 |
+| --- | --- | --- |
+| 运行中 | 任务有活动或尚无终止证据 | 否 |
+| 等待批准 | 存在明确批准请求 | 否 |
+| 等待输入 | 存在当前版本已验证的输入请求 | 否 |
+| 收尾中 | 收到弱完成候选、进程退出或等待末尾追加 | 否 |
+| 已完成 | 得到明确完成证据 | 是 |
+| 已失败 | 得到明确错误／失败证据 | 是 |
+| 用户中断 | 得到明确暂停或取消证据 | 是 |
+| 系统停止 | 得到明确的自动暂停、重试耗尽或非用户停止证据 | 是 |
+| 需要检查 | 已确认任务无法继续观察，但结果无法分类 | 是 |
 
-Each event should carry:
+“安静太久”不是状态，也不能触发状态迁移。
 
-- task key;
-- turn key when available;
-- event key;
-- source;
-- local timestamp;
-- sanitized evidence category;
-- schema version.
+## 证据优先级
 
-Avoid carrying prompt or response bodies through the state engine.
+同一轮次在短而有界的收尾窗口内，建议优先级为：
 
-## Task states
+1. 明确结构化失败；
+2. 明确用户中断；
+3. 明确系统停止；
+4. 明确完成；
+5. `Stop` 等弱完成候选；
+6. Desktop 进程退出。
 
-One useful model is:
+具体字段和窗口长度必须通过本机受控观察确定。更强的晚到证据可以在最终通知尚未提交前覆盖弱候选；通知已经投递后，不得悄悄改写历史，可发送一条带相同关联编号的更正通知。
 
-~~~mermaid
-stateDiagram-v2
-    [*] --> Observed
-    Observed --> Running: turn_started
-    Running --> WaitingApproval: approval_requested
-    Running --> WaitingInput: input_requested
-    WaitingApproval --> Running: activity_resumed
-    WaitingInput --> Running: activity_resumed
-    Running --> Settling: completion_candidate or desktop_exited
-    Settling --> Completed: completion_confirmed
-    Settling --> Failed: error_confirmed
-    Settling --> Interrupted: interruption_confirmed
-    Running --> Failed: structured_error
-    Running --> Interrupted: user_interrupted
-    Completed --> [*]
-    Failed --> [*]
-    Interrupted --> [*]
-~~~
+## 完成
 
-Adapt names to observed events. The important properties are explicit terminal states and a short, bounded settling state for late evidence.
+`Stop` 到来时进入“收尾中”，不立刻断言完成。等待当前版本观察到的末尾追加窗口：
 
-## Precedence
+- 出现明确失败，转“已失败”；
+- 出现用户中断，转“用户中断”；
+- 出现明确完成，转“已完成”；
+- 窗口结束且 `Stop` 已被本机验证为可靠候选，才转“已完成”；
+- 本机没有证明 `Stop` 足够可靠，则转“需要检查”，并在诊断中说明能力缺口。
 
-Define deterministic precedence for conflicting signals. An example:
+`SessionEnd` 不能替代这个流程。
 
-1. explicit structured failure;
-2. explicit user interruption;
-3. explicit successful completion;
-4. validated unknown terminal failure;
-5. process disappearance without terminal evidence remains unresolved.
+## 错误与自动停止
 
-The correct order depends on observed Codex semantics. Record why an event wins and test both arrival orders.
+错误至少分为：认证／权限（如 401、403）、接口或路径（如 404）、限流（如 429）、服务端（5xx）、网络／代理／DNS／TLS／WebSocket、模型不可用、工具／权限、数据格式，以及无法分类。只发送脱敏类别和必要状态码，不发送完整响应正文。
 
-## Waiting states
+某些错误会由 Codex 在本轮内部自动重试。观察到一次 503 或超时不能立即宣布失败：先记录错误候选；如果同一轮恢复进展并最终完成，清除候选并只发完成通知。只有出现重试耗尽、明确终止、自动暂停或任务无法继续的证据，才转“已失败”或“系统停止”。
 
-Approval and input waits are actionable, not failures.
+“用户中断”必须有用户操作证据；“系统停止”必须有当前版本验证过的非用户停止证据。只有任务确实结束、但无法分辨两者时，转“需要检查”。
 
-Notify once when the task enters the waiting state. If it resumes and later requests attention again, issue a new notification only when the request has a distinct event key or turn key.
+## 等待批准与等待输入
 
-Do not infer waiting merely because no new bytes arrive. Require an explicit hook, structured JSONL record or another version-proven signal.
+每个请求用稳定请求编号去重。首次出现时提醒一次；相同请求重复写入不再提醒；出现恢复、响应或新轮次后清除等待状态。新的请求编号可以再次提醒。
 
-## No timer-based stuck state
+批准请求可以使用当前版本明确的批准信号。通用“等待输入”没有可假设的万能钩子：只有发现并验证了明确输入请求或等价 JSONL 记录才能支持。没有证据时，在功能表中标为“不支持”，不能从停顿或助手文字猜测。
 
-Long silence is normal for some tasks. Therefore:
+## Desktop 退出
 
-- do not transition from Running to Failed or Stuck based only on elapsed time;
-- do not send repeated reminders while a task remains quiet;
-- do monitor the health of the local observer separately;
-- allow a user-configurable reminder only as an explicit product feature, disabled by default and labeled as a timer, not failure detection.
+活动任务中进程退出且没有有效维护标记时进入“收尾中”：
 
-## Settling window
+1. 继续处理已经到达和短时间内落盘的末尾事件；
+2. 若 Desktop 恢复且同一任务继续，取消退出候选；
+3. 若出现明确终态，按终态通知；
+4. 有界窗口结束仍无终态，发送“Codex Desktop 已退出，任务结果未知，请检查”，转“需要检查”。
 
-Hooks, file writes and process events can arrive in different orders. Use a short bounded window after a completion candidate or Desktop exit:
+进程退出本身不能直接称为 503、失败或用户暂停。
 
-- continue consuming already queued events;
-- re-read only changed files;
-- allow stronger evidence to replace a weaker candidate;
-- finalize once the window closes or an unambiguous terminal event arrives.
+## 维护标记
 
-This is event convergence, not a long-task timeout.
+维护标记至少包含所有者、开始时间、过期时间和原因类别。有效标记只抑制计划内“进程退出／结果未知”候选：明确错误、用户中断和等待请求仍照常处理。过期标记自动失效，执行维护的工具结束后主动清除。
 
-## Idempotency and deduplication
+## 通知与去重
 
-Derive a stable notification key from fields such as:
+终态通知键应包含任务、轮次、状态类别和决定它的证据编号。等待通知键还要包含请求编号。状态先持久化、通知再入队，两个动作使用同一事务或可恢复顺序。
 
-~~~text
-task_key + turn_key + terminal_state + source_event_key
-~~~
+## 处置闭环
 
-Persist emitted keys. Replaying a hook, restarting the monitor or rereading a late JSONL line must not generate a duplicate.
-
-Do not deduplicate purely on human-readable text; two different turns can have the same title and message.
-
-## Planned maintenance
-
-A cooperating local tool can write a short-lived marker containing:
-
-- maintenance ID;
-- start time;
-- expected maximum duration;
-- allowed process set;
-- no credential or route detail.
-
-When Desktop exits during a valid marker, suppress crash classification but continue processing explicit task errors. Expired markers must not hide genuine later failures.
-
-## State persistence
-
-Persist only what restart recovery needs:
-
-- current non-terminal state;
-- cursor references;
-- last event key;
-- emitted notification keys;
-- settling deadline;
-- maintenance marker reference.
-
-Use atomic writes and schema versions. On corrupt state, rebuild from a bounded recent event window rather than scanning all history blindly.
+| 观测结果 | 用户消息 | 本地后续动作 |
+| --- | --- | --- |
+| 明确完成 | 任务已完成 | 关闭轮次，保留短期去重信息 |
+| 明确错误 | 错误类别与简短脱敏说明 | 关闭轮次；可重试只指消息投递，不自动重跑任务 |
+| 明确用户中断 | 任务已由用户暂停／取消 | 关闭轮次 |
+| 明确系统停止 | Codex 已自动暂停／停止，需要处理 | 关闭轮次并保留脱敏原因 |
+| 明确等待请求 | 等待批准／输入 | 保持非终态，恢复后继续观察 |
+| 进程退出且原因未知 | 结果未知，需要检查 | 关闭本次观察，保留诊断证据 |
+| 只有长时间安静 | 不发送 | 继续事件等待，不增加轮询频率 |
+| 解析器不认识新格式 | 本地显示观察系统不兼容 | 暂停自动分类，保留游标与原始最小证据 |

@@ -1,128 +1,46 @@
-# Signal discovery
+# 信号检查
 
-Build the notifier around evidence from the installed Codex version, not a remembered event schema.
+[English](signal-discovery.en.md)
 
-## Runtime inventory
+提醒程序必须以当前安装版本产生的证据为准，不能凭记忆假设钩子或 JSONL 格式。
 
-Record:
+## 运行环境清单
 
-- Windows and Codex Desktop versions;
-- Desktop executable path and process tree;
-- whether the app combines ChatGPT and Codex surfaces;
-- Codex home and rollout roots expressed with generic paths;
-- hook configuration location and supported hook names;
-- JSONL record types emitted during a controlled task;
-- SQLite metadata needed for task title or project identity;
-- source fields that distinguish Desktop, CLI and subagents;
-- installed CC Connect version, configuration location and candidate platforms.
+只读记录：Windows 与 Codex 版本、Desktop 可执行文件及进程树、Codex 与 ChatGPT 是否合并、用户级钩子来源、历史根目录、JSONL 记录类型、用于标题和项目归属的 SQLite 字段、区分 Desktop／CLI／子代理的来源字段、CC Connect 版本与已配置平台。
 
-Do not print credentials, prompt bodies or conversation text.
+输出只保留字段名、类型、顺序、脱敏哈希和时间，不显示凭据、标题正文、提示词或回复。
 
-## Controlled observation set
+## 钩子的已知边界
 
-Create disposable, non-sensitive tasks that each exercise one outcome:
+以当前[官方钩子说明](https://learn.chatgpt.com/docs/hooks)为准：
 
-1. normal short completion;
-2. explicit tool error;
-3. transport or server error;
-4. user interruption;
-5. approval request;
-6. user-input request;
-7. Desktop exit during a task;
-8. long-running work with no event for an extended period;
-9. CLI task;
-10. subagent task.
+- 用户级钩子可以来自 `hooks.json` 或 `config.toml`；同一层两者并存会合并并给出警告，部署时只保留一种表达。
+- 非托管钩子需要用户审查与信任；定义哈希变化后可能需要重新审查。未信任时要显示本地诊断，不能假装钩子已工作。
+- `SessionStart` 可在启动、恢复、清空或压缩等来源触发，适合写最小唤醒事件。
+- `Stop` 提供本轮标识和最后一条助手消息等信息，但它本身仍只是完成候选。提醒钩子应输出当前格式要求的有效 JSON、快速返回，且不请求阻止或续跑任务。默认不复制最后回复；用户主动开启摘录时，只能在本地限长、脱敏后写入最小事件。
+- `SessionEnd` 不会因为用户仅仅切换任务就立即触发；它可能在关闭、归档、删除或较长空闲后发生，而且始终同步执行，即使配置了异步。它只适合清理，不适合每轮完成提醒。
+- 后台钩子不能控制流程，且会话结束时可能被取消。
 
-Capture only event structure, field names, ordering and timing. Replace titles, identifiers, paths and bodies with synthetic values before turning observations into fixtures.
+若当前版本与官方说明不一致，记录版本和最小复现，把该能力标为“待验证”，不要偷偷降级为关键词猜测。
 
-## Hooks
+## 受控观察用例
 
-For every hook supported by the installed build, determine:
+用不含隐私的临时任务分别触发：正常完成、结构化工具错误、网络／服务错误、未知错误、用户中断、批准请求、输入请求、活动中退出 Desktop、长时间正常运行、CLI 任务和子代理任务。
 
-- when it fires;
-- whether Codex waits for it;
-- input delivery format;
-- exit-code behavior;
-- timeout behavior;
-- environment inherited by the hook;
-- whether it fires for Desktop, CLI or both;
-- whether it can be trusted to start a background helper.
+每个用例记录：触发信号、任务与轮次关联字段、先后顺序、末尾追加延迟、是否可能重复、重启后是否继续。所有夹具必须人工构造，不能从真实会话脱敏改造。
 
-A hook documented or configured as asynchronous may still be launched synchronously in a particular integration path. Measure elapsed impact. Keep hook work to a local append and optional idempotent process start.
+## JSONL 与 SQLite
 
-Hooks should not:
+先列出记录的外层类型和关键字段，再决定解析范围。观察程序只读取新增字节；SQLite 默认只用于标题、项目或来源等必要元数据，不能为了通知方便读取整段正文。
 
-- call the messaging network;
-- parse large history files;
-- wait for another process;
-- read prompt content unnecessarily;
-- start Codex CLI.
+解析器必须有格式版本门禁：未知记录保留为“未识别”，不能因为缺少字段就把任务判为完成或失败。
 
-## JSONL
+## 来源过滤
 
-Map:
+过滤规则必须来自当前版本可证明的字段组合，例如客户端来源、任务类型、父任务标识和工作区。仅靠进程名或目录名通常不够。
 
-- session metadata;
-- task source identifier;
-- turn start and completion records;
-- structured error fields;
-- interruption records;
-- approval and input requests;
-- assistant final-output boundaries;
-- late records appended after a stop signal;
-- archived-file behavior.
+过滤后的结果要用三个用例验证：Desktop 主任务进入、CLI 任务排除、子代理任务排除。来源无法区分时，停止启用自动通知并向用户说明缺口。
 
-Do not assume the first line is the only metadata source. Keep the parser tolerant of unknown records and strict about malformed records that affect a decision.
+## 盘点输出
 
-## Process evidence
-
-Discover the exact process set that means Desktop is alive. Process evidence can:
-
-- wake reconciliation when the app starts;
-- suppress startup before Desktop exists;
-- begin a bounded settling period after exit;
-- stop the local monitor when no pending work remains.
-
-Process disappearance alone cannot classify the task as failed. Windows updates, user exit and planned auth switching can all close Desktop intentionally.
-
-## Source filtering
-
-Find a stable, version-proven way to accept only user-facing Desktop tasks. Possible evidence includes:
-
-- a session source field;
-- parent task relationship;
-- process ancestry;
-- project or surface metadata.
-
-Do not filter by title text. Build synthetic fixtures for Desktop, CLI and subagent events and assert that only intended tasks reach notification state.
-
-## CC Connect delivery discovery
-
-CC Connect is required. Before installation or configuration, inspect whether it is already present and read [CC Connect platform selection](cc-connect-platform-selection.md). Then present the supported choices and ask the user which one to connect.
-
-For each candidate CC Connect platform, determine:
-
-- whether the platform supports outbound bot messages;
-- binding or authorization flow;
-- credential storage needs;
-- daily or burst quotas;
-- reply gates;
-- message-length limits;
-- retry semantics;
-- duplicate-delivery behavior;
-- whether CC Connect can report confirmed acceptance.
-
-Do not infer the platform from an old binding. Do not recommend personal Weixin for unattended notifications; explain its outbound budget and session limitations, distinguish it from WeCom, and require an explicit choice if the user insists.
-
-## Discovery output
-
-Produce:
-
-- a versioned signal table;
-- redacted synthetic fixtures;
-- a supported-state table;
-- known ambiguous cases;
-- source-filter rules;
-- monitor lifecycle evidence;
-- selected CC Connect platform, capability and quota notes;
-- assumptions that must be retested after upgrade.
+最终给出一张表：信号、来源、证据强度、是否支持、重复风险、隐私风险和对应状态。任何“等待输入”“正常完成”或“失败”都必须能追溯到这张表里的明确证据。

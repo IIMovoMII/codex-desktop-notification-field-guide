@@ -1,26 +1,18 @@
-# Security policy
+# 安全说明
 
-This field guide describes software that observes private local task state and sends messages through an external channel.
+[English](SECURITY.en.md)
 
-## Never publish
+## 报告问题
 
-- bot secrets, tokens, binding codes or recipient identifiers;
-- real prompts, responses or rollout files;
-- private channel endpoints;
-- local usernames or home paths;
-- OAuth or API credentials from Codex;
-- logs containing authorization headers or signed URLs.
+请不要在公开问题中提交真实凭据、账号编号、二维码、完整本地路径、认证文件、对话正文或可还原个人身份的日志。先提供受影响版本、最小合成复现和脱敏后的字段结构。
 
-## Reporting a security issue
+## 设计边界
 
-Use a GitHub private security advisory for a vulnerability in this guide or its validator. Do not open a public issue containing secrets or private task content.
+- 通讯平台秘密只保存在受限的本机目录或平台自己的安全存储中。
+- 钩子只写最小本地事件，不直接访问网络。
+- 默认通知不包含提示词、工具参数、结果或完整回复。
+- CC Connect 入站消息不能默认触发 Codex CLI、PowerShell 或任意命令。
+- 发送队列与日志必须经过脱敏，并设置保留期限。
+- 真实钩子和平台绑定要由用户审查并确认。
 
-If a messaging credential or recipient identifier was exposed:
-
-1. revoke or rotate the credential;
-2. invalidate the binding where supported;
-3. remove the value from visible content and Git history;
-4. review channel and local bridge logs;
-5. disclose only a redacted timeline.
-
-Inbound command execution is outside the default design. Any implementation that adds it requires a separate security review.
+公开测试夹具必须从零构造，不能把真实对话“改几个名字”后提交。

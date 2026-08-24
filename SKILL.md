@@ -1,71 +1,71 @@
 ---
 name: codex-desktop-notification-field-guide
-description: Use when designing, auditing, or repairing a Windows companion that observes Codex Desktop completion, errors, interruption, approval, or input-waiting states and delivers privacy-aware notifications through a user-selected CC Connect platform.
+description: 用于设计、审查或修复 Windows 上的 Codex Desktop 本地提醒程序；它从钩子、增量事件和进程状态识别完成、报错、用户中断、等待批准、等待输入与结果未知，并通过用户选择的 CC Connect 平台发送隐私友好的通知。
 ---
 
-# Codex Desktop Notification Field Guide
+# Codex Desktop 消息提醒经验指南
 
-Build a local, version-specific notifier for the current machine with CC Connect as the required delivery bridge. Inspect first and do not preselect the user's platform.
+[English](SKILL.en.md)
 
-## Applicable scenarios
+为当前电脑构建版本相关的本地提醒程序。CC Connect 是固定消息桥，但通讯平台必须由用户选择；先盘点，后实施。
 
-Use this guide when a user wants attention-worthy Codex Desktop states delivered through CC Connect while keeping normal Desktop launch, long-running silence, local privacy and profile switching behavior intact.
+## 适用场景
 
-Do not use it as a general remote-control channel, employee-monitoring system, or justification for inbound chat to execute local actions.
+用户希望照常从桌面或开始菜单打开 Codex，在任务完成、报错、被中断或需要操作时收到提醒，同时不把安静的长任务误判成卡死。
 
-## One-prompt kickoff
+不要把它变成远程控制、员工监控或“收到聊天就执行本机命令”的入口。
 
-When the user arrives through the README's one-prompt deployment sentence, treat it as authorization for read-only discovery and construction of a local solution. Before deployment, ask which CC Connect platform to use and present current choices. Explicitly warn that personal Weixin through iLink is not recommended for unattended notification delivery. The prompt is not blanket authorization to install CC Connect, write live hook configuration, expose messaging credentials or enable inbound control. Pause immediately before those actions when they become necessary.
+## 一句话部署的授权边界
 
-## Workflow
+README 中的部署提示允许只读盘点和编写本机方案，不等于允许安装 CC Connect、绑定通讯账号、写入真实钩子或打开入站控制。到达这些步骤时，必须说明影响并再次征得用户同意。凭据必须由用户在本地界面输入。
 
-1. Discover the Codex Desktop version, process tree, hook support, JSONL event shapes, source identifiers, storage layout, and whether CC Connect is already installed and configured.
-2. Ask the user which CC Connect platform to connect before installation or configuration. Offer at least official QQ Bot, Telegram, Feishu/Lark, personal Weixin and other platforms supported by the detected version; do not infer the choice.
-3. Recommend against personal Weixin for unattended alerts because its server-controlled outbound budget and session behavior can block notifications. Distinguish it from WeCom.
-4. Confirm that the user will continue launching Codex from its normal icon. Prefer lazy hook-triggered startup over a wrapper or permanent boot service.
-5. Treat hooks as low-latency hints, JSONL appends as durable evidence, and process liveness as supporting context.
-6. Normalize those signals into a per-task state machine.
-7. Notify on explicit completion, structured or unknown failure, user interruption, approval wait and input wait.
-8. Do not classify a task as stuck merely because it is quiet for a long time.
-9. Filter out CLI, subagent and notifier-generated sessions before they reach the state machine.
-10. Use Windows directory-change notifications and persistent byte cursors. Do not rescan every history file each second.
-11. Sanitize locally. Hooks must be fast and must not send prompts or message bodies to the network.
-12. Put notifications in a durable outbox, remove them only after confirmed CC Connect delivery, and implement retry, backoff and deduplication.
-13. Keep platform details behind the CC Connect sender boundary. Default to outbound-only delivery.
-14. Add a short maintenance-marker protocol so planned auth switching or updates do not generate false crash notifications.
-15. Validate races, restarts, CC Connect outages, selected-platform limits and version changes with synthetic fixtures plus one real outbound message.
+## 工作流
 
-## Safety rules
+1. 盘点 Windows 与 Codex Desktop 版本、进程树、钩子来源、JSONL 结构、来源标记、存储位置和 CC Connect 状态；不得输出正文或秘密。
+2. 先问用户要连接哪个 CC Connect 平台。至少根据已安装版本说明 QQ 官方机器人、Telegram、飞书／Lark、个人微信和其他可用平台；不能从旧配置替用户决定。
+3. 明确不推荐个人微信承担无人值守提醒，并把本机观察、上游问题和后来修正过的结论分开说明。
+4. 保持用户正常点击 Codex 图标。优先用轻量 `SessionStart` 钩子按需唤醒观察程序，不要求包装启动命令。
+5. 写钩子前检查来源与信任状态。一个配置层只选 `hooks.json` 或内联 `[hooks]`，不要两者并存；定义改变后提醒用户重新审查。
+6. 钩子只写最小本地事件并快速返回。`Stop` 只能作为本轮完成候选；`SessionEnd` 只用于本地会话清理，不能当每轮完成事件，也不能依赖异步执行。
+7. 把当前版本已验证的 JSONL 追加作为主要状态证据，把 Desktop 进程状态作为上下文。没有经过版本验证的字段必须标成未知。
+8. 在进入状态机前过滤 CLI、子代理、观察程序自身和不在范围内的 ChatGPT 会话。
+9. 为每个任务与轮次维护独立状态：运行、等待批准、等待输入、收尾、完成、失败、用户中断、系统停止、需要检查。
+10. 区分任务内部暂时重试和最终失败。只有错误导致本轮停止／自动暂停，或当前版本明确标记为终止错误时才发失败提醒；恢复后成功则按完成处理。
+11. 明确错误优先于弱完成候选；用户中断、系统停止、末尾追加和 `Stop` 竞争时，在短而有界的收尾窗口内按证据强度决定一次最终通知。
+12. Desktop 在活动任务中退出且没有维护标记时进入收尾；如果仍找不到终止证据，就发“结果未知，需要检查”，不能悬空，也不能凭空称为失败。进程及时恢复时取消这个候选。
+13. 等待批准和等待输入必须依赖明确请求编号或当前版本验证过的等价信号，每个请求只提醒一次；恢复运行后清除等待状态。
+14. 安静时长绝不能产生“卡死”或失败通知。观察程序自身可以有健康检查，但不能拿健康计时器给任务下结论。
+15. 使用 Windows 目录变化通知唤醒增量读取器，为每个文件持久保存字节游标；处理半行、文件替换、截断和通知溢出。
+16. 账号切换器或更新器使用有期限的维护标记。标记只抑制计划内进程退出，不得屏蔽明确错误。
+17. 在本地完成分类、裁剪与脱敏。默认只发送状态、经过清理的标题和错误类别；回复摘录必须由用户主动开启。
+18. 通知先进入持久发送队列，再交给 CC Connect；确认接受后才标记已发送。临时失败退避重试，永久失败进入死信并显示本地健康警告。
+19. 区分专用与共享 CC Connect：专用进程可随观察程序启停，共享实例绝不能因为 Codex 退出而被结束。
+20. 把钩子未信任、解析器版本不兼容、监听溢出未恢复、CC Connect 未认证／额度耗尽和死信积压设为可见的观察系统故障。
+21. 用合成事件测试全部竞争顺序、重启、平台故障和隐私，再通过用户选定平台发送一条真实测试通知。
 
-- Never expose messaging credentials, private user identifiers or rollout contents.
-- Never choose or install a CC Connect platform before asking the user.
-- Never recommend personal Weixin as the default unattended notification route.
-- Never ask another model to classify routine local task state when deterministic signals are available.
-- Never launch Codex CLI from an inbound message by default.
-- Never block a Codex hook on network delivery.
-- Never use silence alone as task-failure evidence.
-- Never delete an outbox item before successful delivery.
-- Never assume one Codex version's hook or JSONL schema applies to another.
+## 不可违反的规则
 
-## Read references as needed
+- 不显示通讯凭据、账号标识或对话正文。
+- 不在用户选择前安装或绑定通讯平台。
+- 不把个人微信推荐为默认无人值守路线。
+- 不从安静时长推断任务失败。
+- 不在钩子中等待网络发送。
+- 不把 `SessionEnd` 当作每轮完成钩子。
+- 不在缺少明确证据时声称任务正在等待输入。
+- 不在成功投递前删除队列项目。
+- 默认不允许入站聊天启动 Codex CLI 或执行命令。
+- 不把一个 Codex 版本的字段直接套用到另一个版本。
 
-- Start with [signal discovery](references/signal-discovery.md).
-- Use [state machine](references/state-machine.md) for classification and race handling.
-- Use [incremental monitoring](references/incremental-monitoring.md) for low-overhead observation.
-- Read [CC Connect platform selection](references/cc-connect-platform-selection.md) before asking the user to choose or configuring delivery.
-- Use [delivery](references/delivery.md) for the CC Connect sender and durable messaging.
-- Read [privacy](references/privacy.md) before deciding notification content.
-- Finish with [validation](references/validation.md).
+## 按需阅读
 
-## Deliverable
+- 从[信号检查](references/signal-discovery.md)开始。
+- 用[状态机](references/state-machine.md)闭合状态竞争。
+- 用[增量监听](references/incremental-monitoring.md)控制资源和生命周期。
+- 配置前阅读[CC Connect 平台选择](references/cc-connect-platform-selection.md)。
+- 用[消息投递](references/delivery.md)实现队列、重试和平台边界。
+- 决定消息内容前阅读[隐私](references/privacy.md)。
+- 最后执行[验证清单](references/validation.md)。
 
-Produce a machine-specific design or implementation with:
+## 交付物
 
-- a redacted signal inventory;
-- explicit supported states and precedence rules;
-- a source filter;
-- incremental cursor and restart behavior;
-- privacy and redaction rules;
-- a durable outbox with a CC Connect sender and an explicit user-selected platform;
-- lifecycle integration with normal Desktop launch;
-- synthetic tests and known limits.
+本机方案至少包含：脱敏信号清单、支持状态和优先级、来源过滤器、增量游标、钩子信任说明、隐私规则、持久队列、CC Connect 平台选择与生命周期、观察系统健康状态、合成测试、真实出站验证和已知限制。

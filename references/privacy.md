@@ -1,109 +1,39 @@
-# Privacy
+# 隐私
 
-The monitor sits beside private conversations and messaging credentials. Its safest design is data minimization.
+[English](privacy.en.md)
 
-## Threat model
+观察程序紧邻私人对话与通讯凭据，最稳妥的默认值是少收集、少保存、少发送。
 
-Consider:
+## 默认处理
 
-- accidental source-control inclusion;
-- verbose hook or bridge logs;
-- prompt text copied into notifications;
-- exception traces containing local paths or tokens;
-- another local user reading runtime state;
-- a compromised CC Connect installation or selected platform;
-- inbound messages triggering local execution;
-- synthetic tests built from real conversations;
-- support bundles that include the outbox.
-
-## Data classes
-
-| Data | Default handling |
+| 内容 | 默认规则 |
 | --- | --- |
-| Task state | Allowed |
-| Sanitized task title | Allowed when useful |
-| Model name | Optional; user preference |
-| Short final response excerpt | Opt-in and locally redacted |
-| Error category/status | Allowed |
-| Raw error body | Local only; redact before sending |
-| Prompt or conversation body | Do not collect by default |
-| Tool arguments/results | Do not send |
-| Local absolute path | Replace with a generic label |
-| CC Connect platform credential | Protected local store only |
-| OAuth/API credential | Outside notifier scope |
+| 任务状态 | 可以发送 |
+| 脱敏任务标题 | 有用时发送 |
+| 模型名称 | 用户可选 |
+| 短回复摘录 | 默认关闭；主动开启后本地脱敏 |
+| 错误类别／状态码 | 可以发送 |
+| 原始错误正文 | 仅本地，分类后丢弃或脱敏 |
+| 提示词、对话正文 | 默认不收集 |
+| 工具参数和结果 | 不发送 |
+| 本机绝对路径 | 替换为通用标签 |
+| CC Connect 凭据 | 仅受保护本机存储 |
+| Codex OAuth／API 凭据 | 不属于提醒程序范围 |
 
-## Minimal hook event
+## 最小钩子事件
 
-A hook record should contain only what is required to wake and correlate:
+钩子默认只写格式版本、事件类别、任务与轮次关联值、来源、时间和脱敏状态。它不发网络请求。只有用户主动开启“回复摘录”时，`Stop` 钩子才能在本地截取、限长并脱敏最后回复；原文不得进入普通事件或日志。
 
-~~~text
-schema_version
-event_kind
-task_key
-turn_key
-source
-timestamp
-sanitized_status
-~~~
+## 脱敏
 
-Write it locally with restricted permissions. Do not make a network call from the hook.
+离开电脑前，删除认证头、常见令牌、网址查询串和签名片段；替换用户目录、邮箱和账号标识；限制长度并清理控制字符。能用状态码完成分类时，直接丢弃正文，不要幻想脱敏能百分之百覆盖秘密。
 
-## Redaction
+## 本地存储与日志
 
-Before an error or optional result excerpt leaves the machine:
+游标、任务状态、发送队列、通讯凭据和运行日志分开存放，并限制为当前用户访问。已发送通知只保留去重与诊断所需的脱敏摘要，到期删除。
 
-- remove authorization headers and known token formats;
-- strip query strings and signed URL fragments;
-- replace home-directory prefixes;
-- remove email addresses and user identifiers unless explicitly needed;
-- cap length;
-- normalize control characters;
-- prefer a structured status code over raw provider text.
+普通日志只记录组件、事件类别、任务哈希、状态迁移、投递结果类别和耗时。诊断模式必须有明确警告和自动到期，仍不得输出秘密或整条 JSONL。
 
-Redaction should be deterministic and tested with synthetic secrets. If classification succeeds without a body, discard the body rather than trying to redact it perfectly.
+## 公开仓库
 
-## Local storage
-
-Store runtime state under a dedicated current-user directory with restrictive ACLs. Separate:
-
-- cursors and task-state metadata;
-- outbox;
-- CC Connect platform credentials;
-- redacted operational logs.
-
-Use rotation and retention. A delivered notification does not need to remain forever. Keep enough redacted metadata for deduplication and diagnosis, then expire it.
-
-## Logging
-
-Default logs should contain:
-
-- component;
-- event category;
-- task key hash;
-- transition;
-- CC Connect delivery result class;
-- timing.
-
-They should not contain:
-
-- message bodies;
-- prompt text;
-- credentials;
-- complete local paths;
-- raw JSONL records.
-
-Provide a temporary diagnostic mode only when necessary, with an automatic expiry and a clear warning.
-
-## Repository hygiene
-
-Public fixtures must be written from scratch. Do not “anonymize” a real conversation and assume every identifier was removed.
-
-CI should scan for:
-
-- absolute Windows user paths;
-- common secret formats;
-- messaging identifiers;
-- assigned app-secret values;
-- accidental auth files.
-
-Manual review remains required because pattern matching cannot identify every private host or account value.
+测试夹具从零编写。持续集成扫描常见密钥、绝对用户路径、通讯标识和应用秘密，但模式扫描不能替代人工检查。
