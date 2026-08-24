@@ -44,10 +44,10 @@
 
 ## 一句话部署
 
-把下面这段复制到一个新的 Codex 任务中：
+把下面这句话复制到一个新的 Codex 任务中：
 
 ~~~text
-Codex，请按 https://github.com/IIMovoMII/codex-desktop-notification-field-guide 为这台 Windows 电脑构建一个 Codex Desktop 本地提醒程序。先只读盘点当前 Codex 版本、钩子来源与信任状态、JSONL 结构、来源标记、进程生命周期、CC Connect 版本和现有绑定；然后必须问我选择 QQ 官方机器人、Telegram、飞书／Lark、个人微信或当前版本支持的其他平台，并如实说明个人微信不适合可靠的无人值守提醒。保持我照常点击桌面或开始菜单图标：用轻量 `SessionStart` 钩子按需唤醒，`Stop` 只作为完成候选，`SessionEnd` 只做同步清理；同一配置层只保留一种钩子表达，并让我审查和信任。结合当前版本验证过的 JSONL 增量、钩子和进程证据，过滤 CLI、子代理和无关会话，识别完成、各类错误、用户中断、等待批准、等待输入，以及 Desktop 退出后仍无法分类的“需要检查”；绝不从长时间安静推断卡死。使用文件变化通知、持久游标、状态机、维护标记、去重队列、退避重试和死信，把提示词和正文留在本机；区分专用与共享 CC Connect，默认只向外发通知，聊天消息不能启动 Codex CLI。安装 CC Connect、绑定平台或写真实钩子前分别说明影响并征得我同意；最后用合成事件验证所有竞争、观察系统故障和隐私，再通过我选的平台发送一条真实测试通知。
+Codex，请阅读并严格遵循 https://github.com/IIMovoMII/codex-desktop-notification-field-guide 的 `SKILL.md`，再按其中指引读取相关 `references`；结合我的 Windows 本机环境，为我构建并验证一个通过 CC Connect 发送的 Codex Desktop 本地提醒程序。先只读盘点并询问我要连接的平台，安装、绑定或写入钩子前先征得我的确认。
 ~~~
 
 这里的“部署”是把任务一次性交给 Codex，不是安装预先配置的机器人。如果缺少必要的通讯平台、账号或权限，Codex 应只询问必须由你选择的内容，并始终让凭据留在对话之外。
