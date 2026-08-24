@@ -65,7 +65,7 @@ Verify:
 - restart does not lose queued items;
 - timeout uncertainty does not create uncontrolled duplicates;
 - platform quota is honored;
-- switching adapters preserves or deliberately handles queued items;
+- switching user-selected CC Connect platforms preserves or deliberately handles queued items;
 - inbound chat content cannot launch Codex or local commands.
 
 ## Privacy assertions
@@ -95,7 +95,7 @@ From a clean stopped state:
 
 1. launch Codex using the normal Desktop or Start-menu entry;
 2. trigger the first supported lifecycle hook;
-3. confirm one background monitor and one required bridge start;
+3. confirm one background monitor and the required CC Connect process start;
 4. complete a synthetic task and receive one notification;
 5. exit Desktop;
 6. confirm terminal events settle and helpers stop;
@@ -127,7 +127,7 @@ Record:
 - idle resource measurements;
 - retry and restart result;
 - privacy scan result;
-- channel adapter and known quota limits;
+- selected CC Connect platform and known quota limits;
 - known ambiguous states.
 
 Do not include private task IDs, credentials, local paths or conversation bodies.

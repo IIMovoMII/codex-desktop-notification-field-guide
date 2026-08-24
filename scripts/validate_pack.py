@@ -17,6 +17,7 @@ REQUIRED = {
     "references/signal-discovery.md",
     "references/state-machine.md",
     "references/incremental-monitoring.md",
+    "references/cc-connect-platform-selection.md",
     "references/delivery.md",
     "references/privacy.md",
     "references/validation.md",

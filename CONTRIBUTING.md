@@ -9,7 +9,7 @@ Contributions should improve the observation and delivery method without turning
 - a more reliable state transition;
 - a lower-overhead monitoring technique;
 - a privacy or redaction improvement;
-- a channel-neutral delivery pattern;
+- a platform-neutral state pattern that still delivers through CC Connect;
 - a measurable validation method.
 
 ## Please avoid

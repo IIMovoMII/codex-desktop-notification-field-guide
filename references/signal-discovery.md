@@ -14,7 +14,7 @@ Record:
 - JSONL record types emitted during a controlled task;
 - SQLite metadata needed for task title or project identity;
 - source fields that distinguish Desktop, CLI and subagents;
-- selected messaging channel and its local bridge.
+- installed CC Connect version, configuration location and candidate platforms.
 
 Do not print credentials, prompt bodies or conversation text.
 
@@ -96,9 +96,11 @@ Find a stable, version-proven way to accept only user-facing Desktop tasks. Poss
 
 Do not filter by title text. Build synthetic fixtures for Desktop, CLI and subagent events and assert that only intended tasks reach notification state.
 
-## Delivery discovery
+## CC Connect delivery discovery
 
-Before choosing an adapter, determine:
+CC Connect is required. Before installation or configuration, inspect whether it is already present and read [CC Connect platform selection](cc-connect-platform-selection.md). Then present the supported choices and ask the user which one to connect.
+
+For each candidate CC Connect platform, determine:
 
 - whether the platform supports outbound bot messages;
 - binding or authorization flow;
@@ -108,9 +110,9 @@ Before choosing an adapter, determine:
 - message-length limits;
 - retry semantics;
 - duplicate-delivery behavior;
-- whether the local bridge can report confirmed acceptance.
+- whether CC Connect can report confirmed acceptance.
 
-CC Connect is one possible bridge, not a requirement. Treat its process and protocol as an adapter dependency.
+Do not infer the platform from an old binding. Do not recommend personal Weixin for unattended notifications; explain its outbound budget and session limitations, distinguish it from WeCom, and require an explicit choice if the user insists.
 
 ## Discovery output
 
@@ -122,5 +124,5 @@ Produce:
 - known ambiguous cases;
 - source-filter rules;
 - monitor lifecycle evidence;
-- channel capability and quota notes;
+- selected CC Connect platform, capability and quota notes;
 - assumptions that must be retested after upgrade.

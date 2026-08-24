@@ -11,7 +11,7 @@ Consider:
 - prompt text copied into notifications;
 - exception traces containing local paths or tokens;
 - another local user reading runtime state;
-- a compromised messaging adapter;
+- a compromised CC Connect installation or selected platform;
 - inbound messages triggering local execution;
 - synthetic tests built from real conversations;
 - support bundles that include the outbox.
@@ -29,7 +29,7 @@ Consider:
 | Prompt or conversation body | Do not collect by default |
 | Tool arguments/results | Do not send |
 | Local absolute path | Replace with a generic label |
-| Messaging credential | Protected local store only |
+| CC Connect platform credential | Protected local store only |
 | OAuth/API credential | Outside notifier scope |
 
 ## Minimal hook event
@@ -68,7 +68,7 @@ Store runtime state under a dedicated current-user directory with restrictive AC
 
 - cursors and task-state metadata;
 - outbox;
-- adapter credentials;
+- CC Connect platform credentials;
 - redacted operational logs.
 
 Use rotation and retention. A delivered notification does not need to remain forever. Keep enough redacted metadata for deduplication and diagnosis, then expire it.
@@ -81,7 +81,7 @@ Default logs should contain:
 - event category;
 - task key hash;
 - transition;
-- adapter result class;
+- CC Connect delivery result class;
 - timing.
 
 They should not contain:

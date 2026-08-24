@@ -16,7 +16,7 @@
 
 ## What this is
 
-This repository is **not a bot package or a preconfigured messaging bridge**. It is a field guide for building a local notification companion around the Codex Desktop version, event formats and messaging channel available on one machine.
+This repository is **not a bot package or a preconfigured messaging bridge**. It is a field guide for building a local notification companion around the Codex Desktop version and event formats available on one machine. The delivery bridge is deliberately fixed to [CC Connect](https://github.com/chenhg5/cc-connect); the user must choose the CC Connect platform before deployment.
 
 The design emerged from a practical need: start Codex normally from the Desktop icon, leave a long task running, and receive a message when the task completes, fails, pauses or needs attention. Long silence is allowed. The monitor should not burn CPU scanning all history, expose prompts to a remote service, or launch Codex CLI in response to chat messages.
 
@@ -30,7 +30,7 @@ The design emerged from a practical need: start Codex normally from the Desktop 
 | A task needs approval or more user input | Notify once for each distinct actionable request and stop repeating after the task resumes |
 | Codex is always opened from the Desktop or Start-menu icon | Start the monitor lazily from a supported lifecycle hook and stop it with Desktop |
 | Official OAuth and API profiles are switched on the same machine | Preserve hooks and monitor state, and suppress false crash alerts during marked maintenance |
-| The messaging platform may change later | Keep detection independent from the CC Connect, QQ, webhook or other delivery adapter |
+| The messaging platform may change later | Keep detection independent from the selected platform while routing every outbound notification through CC Connect |
 | A legitimate task is quiet for hours | Continue observing without timer-based “stuck” notifications |
 
 This guide is not a remote-control channel, a general employee-monitoring system, a replacement for Codex's own UI, or permission for inbound chat messages to execute local commands.
@@ -40,10 +40,10 @@ This guide is not a remote-control channel, a general employee-monitoring system
 Copy this sentence into a new Codex task:
 
 ~~~text
-Codex, read https://github.com/IIMovoMII/codex-desktop-notification-field-guide, begin with a read-only inspection of this Windows machine's Codex Desktop version, supported hooks, JSONL event shapes, process lifecycle and available messaging channels, then design and build a local notification companion tailored to this machine that starts and stops with the normally launched Desktop app, recognizes completion, structured and unknown errors, user interruption, approval waits and input waits, never reports long silence as a stuck task, filters CLI and subagent sessions, keeps prompts and conversation bodies local, never launches Codex CLI from inbound chat, uses incremental file watching plus a durable deduplicated retrying outbox, pauses for my confirmation before installing third-party components or writing live hooks, and finally validates the state races with synthetic events and one real outbound notification.
+Codex, read https://github.com/IIMovoMII/codex-desktop-notification-field-guide, begin with a read-only inspection of this Windows machine's Codex Desktop version, supported hooks, JSONL event shapes, process lifecycle and any existing CC Connect installation, then ask me which CC Connect platform to use before deployment, presenting at least official QQ Bot, Telegram, Feishu/Lark, personal Weixin and any other platforms supported by the detected version, clearly warning that personal Weixin is not recommended for unattended notifications because of its outbound-message and session limitations, then design and build a local CC Connect-backed notification companion that starts and stops with the normally launched Desktop app, recognizes completion, structured and unknown errors, user interruption, approval waits and input waits, never reports long silence as a stuck task, filters CLI and subagent sessions, keeps prompts and conversation bodies local, never launches Codex CLI from inbound chat, uses incremental file watching plus a durable deduplicated retrying outbox, pauses for my confirmation before installing CC Connect or writing live hooks, and finally validates the state races with synthetic events and one real outbound notification through my chosen platform.
 ~~~
 
-This is “deployment” by delegation, not a preconfigured bot installer. If a required channel, account or permission is missing, the agent should ask only for the necessary choice and keep credentials outside the conversation.
+This is “deployment” by delegation, not a preconfigured bot installer. If the selected CC Connect platform, account or permission is missing, the agent should ask only for the necessary choice and keep credentials outside the conversation.
 
 ## Why one signal is not enough
 
@@ -59,11 +59,11 @@ flowchart LR
     N --> S[Per-task state machine]
     S --> D[Deduplication and privacy filter]
     D --> O[Durable outbox]
-    O --> A[Channel adapter]
-    A --> Q[QQ, CC Connect or another messenger]
+    O --> A[CC Connect sender]
+    A --> Q[User-selected CC Connect platform]
 ~~~
 
-Hooks wake the system quickly. Windows directory notifications wake the incremental reader when files change. A lightweight periodic reconciliation protects against missed events; it does not scan all conversations or infer failure from elapsed time.
+Hooks wake the system quickly. Windows directory notifications wake the incremental reader when files change. A lightweight periodic reconciliation protects against missed events; it does not scan all conversations or infer failure from elapsed time. The state engine remains platform-neutral internally, but the supported delivery path always ends at CC Connect.
 
 ## Events worth notifying
 
@@ -90,7 +90,7 @@ Do not create a “probably stuck” notification from a timer alone. Codex task
 6. **Prefer structured errors.** Text matching is a fallback for version gaps; unknown failures still deserve a notification.
 7. **Keep prompts local.** A hook should write the minimum sanitized event and return immediately.
 8. **Queue before sending.** Remove a notification only after the channel confirms success.
-9. **Make delivery replaceable.** State detection should not know whether the adapter uses CC Connect, an official QQ bot or another service.
+9. **Fix the bridge, choose the platform.** Delivery always uses CC Connect, while state detection remains independent from the selected CC Connect platform.
 10. **Coordinate planned maintenance.** An auth switcher or updater can write a short-lived marker so a planned restart is not reported as a crash.
 
 ## Guide map
@@ -100,7 +100,8 @@ Do not create a “probably stuck” notification from a timer alone. Codex task
 | [Signal discovery](references/signal-discovery.md) | Inspect hooks, JSONL, processes and source identifiers |
 | [State machine](references/state-machine.md) | Combine signals without timer-based false alarms |
 | [Incremental monitoring](references/incremental-monitoring.md) | Build low-overhead Windows watching and durable cursors |
-| [Delivery](references/delivery.md) | Design the outbox, retries, adapters and one-way channel boundary |
+| [CC Connect platform selection](references/cc-connect-platform-selection.md) | Ask the user which platform to connect and explain why personal Weixin is not recommended |
+| [Delivery](references/delivery.md) | Design the outbox, retries, CC Connect sender and one-way channel boundary |
 | [Privacy](references/privacy.md) | Minimize and redact local and remote data |
 | [Validation](references/validation.md) | Test state races, failures, restarts and channel outages |
 
@@ -116,9 +117,24 @@ The user should keep launching Codex from the Desktop or Start menu. A safe inte
 
 This avoids a startup wrapper and avoids a permanent boot-time service. Exact hook names and synchronous/asynchronous behavior must be tested against the installed Codex build.
 
-## Delivery channels
+## CC Connect platform choice
 
-Keep a narrow adapter contract:
+CC Connect is required for this guide. Before installing or configuring it, ask the user which platform they want. Do not silently choose the platform from what happens to be installed.
+
+| Choice | Practical guidance |
+| --- | --- |
+| QQ Bot Official | Preferred for users who want QQ and can complete QQ developer verification; upstream uses the official API and requires no public IP |
+| Telegram | Good when Telegram is reachable; upstream uses long polling and requires no public IP |
+| Feishu/Lark | Good for stable personal or team workflows; upstream uses a WebSocket connection and requires no public IP |
+| QQ via OneBot | Possible, but requires a third-party OneBot implementation and has a different risk profile from official QQ Bot |
+| Personal Weixin via iLink | **Not recommended for unattended notification delivery** |
+| WeCom or another supported platform | Offer when it matches the user's actual account and installed CC Connect version |
+
+**Why personal Weixin is not recommended:** the source environment observed delivery stopping after roughly ten unanswered outbound messages until the user interacted again. Upstream has also documented long-message delivery failures around ten messages ([issue #770](https://github.com/chenhg5/cc-connect/issues/770)), server-controlled session constraints ([issue #1087](https://github.com/chenhg5/cc-connect/issues/1087)), and a measured per-account send budget of roughly five to six separate messages per 24 hours, leading CC Connect to default to a budget of four ([merged PR #1643](https://github.com/chenhg5/cc-connect/pull/1643)). Exact behavior can change, but this is fundamentally unsuitable for dependable unattended alerts.
+
+Personal Weixin and WeCom are different CC Connect platforms. The warning above targets personal Weixin through iLink; evaluate WeCom separately.
+
+After the user chooses, keep a narrow local sender contract:
 
 ~~~text
 send(notification) -> accepted delivery identifier
@@ -126,7 +142,7 @@ healthcheck() -> channel status
 classify_failure(error) -> retryable or permanent
 ~~~
 
-CC Connect can be one adapter when it supports the desired platform. An official QQ bot, webhook or another local bridge can be another. Platform quotas, reply gates and account policies belong in the adapter, not the Codex state machine.
+Platform quotas, reply gates and account policies belong in the CC Connect delivery boundary, not the Codex state machine. Configure one chosen platform and prove one real outbound notification before adding another.
 
 Outbound-only is the safer default. Receiving a chat message should not launch Codex CLI or execute commands unless the user designs and secures a separate control plane.
 
@@ -139,12 +155,13 @@ Outbound-only is the safer default. Receiving a chat message should not launch C
 - Reading thread titles from SQLite is often enough; message bodies need not enter the notification pipeline.
 - Polling file trees every second scales poorly and creates needless disk work. Directory notifications plus cursor-based tailing are calmer and more reliable.
 - A durable outbox prevents a transient messenger outage from losing a task result.
+- A bridge can support many platforms while one platform is still a poor fit; personal Weixin's outbound limits make it unsuitable as the default notification route.
 - Delivery deduplication needs a stable event key, not just matching message text.
 - Account/API switching should preserve hooks and monitor settings because the auth switcher patches only its owned fields.
 
 ## Using this with a coding agent
 
-Point an agent at [SKILL.md](SKILL.md). It should inspect the installed Codex version and local event shapes, propose a state model, generate synthetic fixtures, then implement a notifier appropriate to the selected channel. It should not copy private rollout content into prompts or install a messaging service without explicit user approval.
+Point an agent at [SKILL.md](SKILL.md). It should inspect the installed Codex version, local event shapes and CC Connect state, then ask the user to choose a CC Connect platform before implementation. It should explain the personal-Weixin warning, propose a state model, generate synthetic fixtures and implement the notifier only after the platform choice. It should not copy private rollout content into prompts or install CC Connect without explicit user approval.
 
 ## Scope
 

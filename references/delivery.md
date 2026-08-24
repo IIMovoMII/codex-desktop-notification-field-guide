@@ -1,6 +1,6 @@
-# Delivery
+# Delivery through CC Connect
 
-Reliable notification delivery is a queueing problem with a replaceable channel adapter.
+Reliable notification delivery is a queueing problem with CC Connect as the required bridge and a user-selected CC Connect platform.
 
 ## Durable outbox
 
@@ -15,7 +15,7 @@ state
 summary_redacted
 attempt_count
 next_attempt_at
-adapter_id
+cc_connect_platform
 schema_version
 ~~~
 
@@ -23,9 +23,9 @@ Do not include prompts, tool arguments, credentials or raw rollout records.
 
 Use atomic state updates or a small transactional database. After a crash, every accepted-but-unconfirmed item should be safe to retry.
 
-## Delivery contract
+## CC Connect sender contract
 
-An adapter should expose:
+The local CC Connect sender should expose:
 
 - health check;
 - send one normalized notification;
@@ -34,7 +34,7 @@ An adapter should expose:
 - redact its own error details;
 - report quota or authorization status.
 
-The Codex state machine should not know platform-specific request shapes.
+The Codex state machine should not know platform-specific request shapes. The sender translates the normalized notification into the selected CC Connect project and session.
 
 ## Retry policy
 
@@ -66,13 +66,13 @@ Messaging platforms can impose:
 - message-length limits;
 - account-review or bot-policy restrictions.
 
-Measure the actual selected channel and encode these limits in the adapter. Do not generalize one platform's behavior to another.
+Measure the selected CC Connect platform and encode its limits in the sender boundary. Do not generalize one platform's behavior to another. Personal Weixin is not recommended for this workload; see [CC Connect platform selection](cc-connect-platform-selection.md).
 
 If notifications can be coalesced without losing meaning, combine several terminal results into a digest only when the user explicitly prefers it.
 
-## CC Connect and local bridges
+## CC Connect boundary
 
-When using CC Connect or another local bridge:
+When using CC Connect:
 
 - manage its lifecycle independently from task classification;
 - verify that the bridge is bound to the intended outbound conversation;
@@ -85,7 +85,7 @@ Do not make the monitor dependent on an interactive QR flow after every restart.
 
 ## Outbound-only boundary
 
-The default adapter sends notifications and ignores inbound chat content.
+The notifier's CC Connect integration sends notifications and ignores inbound chat content.
 
 Inbound control would require a separate security design:
 
@@ -99,16 +99,16 @@ Inbound control would require a separate security design:
 
 Unless those controls are intentionally designed and reviewed, an inbound message must never launch Codex CLI or execute local actions.
 
-## Changing channels
+## Changing CC Connect platforms
 
 Keep the outbox's normalized notification schema independent of the platform. To move from one messenger to another:
 
 1. pause delivery;
-2. configure and validate the new adapter;
+2. ask the user to choose and configure the new CC Connect platform;
 3. choose how to handle queued items;
-4. switch the adapter ID transactionally;
+4. switch the CC Connect platform and destination transactionally;
 5. send a synthetic test;
-6. disable the old adapter credential;
+6. disable the old platform credential when the user no longer needs it;
 7. resume the queue.
 
 State detection and JSONL cursors should not change.
