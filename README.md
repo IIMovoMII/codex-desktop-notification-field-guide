@@ -20,6 +20,31 @@ This repository is **not a bot package or a preconfigured messaging bridge**. It
 
 The design emerged from a practical need: start Codex normally from the Desktop icon, leave a long task running, and receive a message when the task completes, fails, pauses or needs attention. Long silence is allowed. The monitor should not burn CPU scanning all history, expose prompts to a remote service, or launch Codex CLI in response to chat messages.
 
+## Concrete use cases
+
+| Situation | What a machine-specific implementation should achieve |
+| --- | --- |
+| Long Codex Desktop tasks run while the user is away | Send one useful notification when the task actually completes or needs attention |
+| API or relay work frequently encounters service, transport or authentication errors | Preserve structured error categories, fall back to an unknown-error alert and retry delivery safely |
+| The user pauses a task midway | Distinguish an explicit interruption from failure or normal completion |
+| A task needs approval or more user input | Notify once for each distinct actionable request and stop repeating after the task resumes |
+| Codex is always opened from the Desktop or Start-menu icon | Start the monitor lazily from a supported lifecycle hook and stop it with Desktop |
+| Official OAuth and API profiles are switched on the same machine | Preserve hooks and monitor state, and suppress false crash alerts during marked maintenance |
+| The messaging platform may change later | Keep detection independent from the CC Connect, QQ, webhook or other delivery adapter |
+| A legitimate task is quiet for hours | Continue observing without timer-based “stuck” notifications |
+
+This guide is not a remote-control channel, a general employee-monitoring system, a replacement for Codex's own UI, or permission for inbound chat messages to execute local commands.
+
+## Deploy in one prompt
+
+Copy this sentence into a new Codex task:
+
+~~~text
+Codex, read https://github.com/IIMovoMII/codex-desktop-notification-field-guide, begin with a read-only inspection of this Windows machine's Codex Desktop version, supported hooks, JSONL event shapes, process lifecycle and available messaging channels, then design and build a local notification companion tailored to this machine that starts and stops with the normally launched Desktop app, recognizes completion, structured and unknown errors, user interruption, approval waits and input waits, never reports long silence as a stuck task, filters CLI and subagent sessions, keeps prompts and conversation bodies local, never launches Codex CLI from inbound chat, uses incremental file watching plus a durable deduplicated retrying outbox, pauses for my confirmation before installing third-party components or writing live hooks, and finally validates the state races with synthetic events and one real outbound notification.
+~~~
+
+This is “deployment” by delegation, not a preconfigured bot installer. If a required channel, account or permission is missing, the agent should ask only for the necessary choice and keep credentials outside the conversation.
+
 ## Why one signal is not enough
 
 Hooks are fast, but their event coverage and timing can vary. JSONL contains richer evidence, but reading every file repeatedly is wasteful. Process exit is useful, but it cannot explain why a task stopped. Reliable classification comes from combining small, independent signals.
