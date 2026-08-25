@@ -2,11 +2,13 @@
 
 [CC Connect](https://github.com/chenhg5/cc-connect) is the required delivery bridge for this guide. The user still owns the platform choice. Ask before installing, binding or changing any channel.
 
-## Required first question
+## Required user choices
 
-After read-only discovery, ask:
+After read-only discovery, ask only for choices the machine cannot answer:
 
 > Which CC Connect platform should receive Codex Desktop notifications: official QQ Bot, Telegram, Feishu/Lark, personal Weixin, WeCom, or another platform supported by the installed version?
+
+Also ask whether to use a dedicated or existing CC Connect project, and whether the user wants notification-only operation or a separately secured inbound-control module.
 
 Show only platforms that are actually supported by the detected CC Connect release. Explain the practical differences and wait for a selection. Do not infer the answer from stale config, an old binding or the user's operating system.
 
@@ -52,10 +54,10 @@ Personal Weixin is not WeCom. WeCom uses a separate platform and protocol; asses
 2. Present supported candidates and the personal-Weixin warning.
 3. Wait for the user's explicit platform choice.
 4. If CC Connect is absent, explain the upstream source, installation method, local files and permissions, then obtain confirmation before installation.
-5. Create or select a dedicated notification project and outbound destination.
+5. Create or select the user-approved dedicated or existing project and destination. A dedicated project is the safer default, not a hard requirement.
 6. Let the user enter bot credentials through CC Connect's local UI or another local secret path; never ask for secrets in chat.
-7. Restrict allowed senders and administrative commands.
-8. Keep the Codex notifier outbound-only even if CC Connect itself supports interactive agent sessions.
+7. If inbound control was selected, restrict allowed senders and administrative commands; otherwise ignore inbound content.
+8. Keep task classification and outbound notification delivery independent from any optional inbound agent session.
 9. Send one synthetic notification and require visible confirmation from the user.
 10. Record the platform, CC Connect version and verified delivery ID without storing the credential.
 

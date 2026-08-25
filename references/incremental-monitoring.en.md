@@ -4,7 +4,7 @@ Low overhead comes from reacting to filesystem changes and remembering exactly h
 
 ## Event-driven wakeups
 
-On Windows, use a directory-change mechanism such as <code>ReadDirectoryChangesW</code> through a well-tested library or a small native wrapper. Watch only discovered rollout roots.
+Use the operating system's native filesystem event mechanism through a well-tested library or a small native wrapper—for example `ReadDirectoryChangesW` on Windows, FSEvents on macOS, or inotify on Linux. Watch only discovered rollout roots.
 
 A change notification says “something changed,” not what the final task state is. Use it to schedule a bounded incremental read.
 
@@ -61,16 +61,21 @@ For first use, establish a baseline without notifying on every old completed tas
 
 ## Process lifecycle
 
-The monitor can start lazily from a Codex hook and exit when:
+The monitor must follow Codex Desktop regardless of whether the user launches it from an icon, Start menu, terminal, updater, protocol link or another normal entry point. Two valid product choices are:
+
+- lazy lifecycle: a trusted Codex lifecycle hook starts the single-instance monitor on the first observable event;
+- immediate lifecycle: an operating-system process event or user-approved login observer starts the monitor as soon as Desktop appears.
+
+Ask which guarantee the user wants. Do not require a wrapper command. The monitor can exit when:
 
 - no Desktop process remains;
 - no relevant task is settling;
 - the outbox is durably saved;
 - the delivery bridge has no required local cleanup.
 
-Use an idempotent single-instance lock so several hooks do not launch several monitors. A manual health command remains useful for repair and diagnosis, but normal Desktop launch should not depend on it.
+Use an idempotent single-instance lock so several hooks or process events do not launch several monitors. Restore the persisted event ledger before accepting new events so restart races cannot duplicate alerts. A manual health command remains useful for repair and diagnosis, but normal Desktop launch should not depend on it.
 
-If the notifier owns a dedicated CC Connect process, it may stop that process after the outbox settles. If it shares an existing CC Connect instance, it must only disconnect and must never terminate the shared process. If no trusted startup hook exists, explicitly offer a user-approved login-time observer or manual start and mark icon-based lazy startup unsupported; do not claim it works.
+If the notifier owns a dedicated CC Connect process, it may stop that process after the outbox settles. If it shares an existing CC Connect instance, it must only disconnect and must never terminate the shared process. If no trusted lifecycle hook or process observer exists, explicitly offer a user-approved login-time observer or manual start and state the reduced guarantee; do not claim automatic following works.
 
 ## CPU and disk budget
 

@@ -57,6 +57,15 @@ PRIVATE_PATTERNS = {
 
 LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 
+SEMANTIC_MARKERS = {
+    "README.md": ("产品说明书", "一句话部署", "正常入口", "CC Connect", "Stop", "入站"),
+    "README.en.md": ("product brief", "Deploy in one prompt", "any normal entry point", "CC Connect", "Stop", "inbound"),
+    "SKILL.md": ("说明书定位", "不要求包装启动命令", "stop_hook_active", "跨重启稳定", "入站模式由用户选择", "安静时长"),
+    "SKILL.en.md": ("Product-brief status", "Do not require a wrapper command", "stop_hook_active", "restart-stable", "notification-only or inbound-enabled", "quiet for a long time"),
+    "references/delivery.md": ("通用成功", "消息编号", "入站"),
+    "references/delivery.en.md": ("generic success", "message identifier", "inbound"),
+}
+
 
 def iter_text_files() -> list[Path]:
     return sorted(
@@ -142,11 +151,23 @@ def validate_privacy(path: Path, text: str, errors: list[str]) -> None:
             errors.append(f"{relative}：可能包含{label}")
 
 
+def validate_semantics(errors: list[str]) -> None:
+    for relative, markers in SEMANTIC_MARKERS.items():
+        path = ROOT / relative
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for marker in markers:
+            if marker not in text:
+                errors.append(f"{relative}：缺少闭环语义标记：{marker}")
+
+
 def main() -> int:
     errors: list[str] = []
     validate_required(errors)
     validate_skill(errors)
     validate_chinese_primary(errors)
+    validate_semantics(errors)
 
     for path in iter_text_files():
         text = path.read_text(encoding="utf-8")

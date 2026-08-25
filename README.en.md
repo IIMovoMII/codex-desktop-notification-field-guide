@@ -2,10 +2,10 @@
 
 # Codex Desktop Notification Field Guide
 
-**Turn Codex Desktop lifecycle signals into reliable, privacy-aware notifications without polling every conversation or asking another model to guess the state.**
+**A field-tested product brief for agents turning Codex Desktop task state into reliable CC Connect notifications.**
 
 [![Field Guide](https://img.shields.io/badge/type-field%20guide-6f42c1)](#what-this-is)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078D4)](#scope)
+[![Adaptation](https://img.shields.io/badge/adaptation-machine--specific-0078D4)](#scope)
 [![Architecture](https://img.shields.io/badge/architecture-event--driven-0f766e)](#architecture)
 [![Validation](https://github.com/IIMovoMII/codex-desktop-notification-field-guide/actions/workflows/validate.yml/badge.svg)](https://github.com/IIMovoMII/codex-desktop-notification-field-guide/actions/workflows/validate.yml)
 [![License](https://img.shields.io/badge/license-MIT-16a34a)](LICENSE)
@@ -16,9 +16,11 @@
 
 ## What this is
 
-This repository is **not a bot package or a preconfigured messaging bridge**. It is a field guide for building a local notification companion around the Codex Desktop version and event formats available on one machine. The delivery bridge is deliberately fixed to [CC Connect](https://github.com/chenhg5/cc-connect); the user must choose the CC Connect platform before deployment.
+This repository is **not a bot package or a preconfigured messaging bridge**. It is a product brief and field guide, written primarily for coding agents building around the Codex Desktop version, event formats, and user requirements on one machine. The delivery bridge is deliberately fixed to [CC Connect](https://github.com/chenhg5/cc-connect); the user chooses the platform and whether inbound interaction is in scope.
 
-The design emerged from a practical need: start Codex normally from the Desktop icon, leave a long task running, and receive a message when the task completes, fails, pauses or needs attention. Long silence is allowed. The monitor should not burn CPU scanning all history, expose prompts to a remote service, or launch Codex CLI in response to chat messages.
+> The repository describes outcomes, state lessons, and acceptance criteria—not one mandatory codebase. Adapt observation, UI, message content, and optional features to the local system. Windows mechanisms are validated examples, not the only cross-platform design.
+
+The design emerged from a practical need: start Codex through any normal entry point, leave a long task running, and receive a message when it completes, fails, pauses, or needs attention. The companion must not depend on a special shortcut or wrapper. Long silence is allowed, and the monitor should not burn CPU scanning all history or expose prompts to a remote service.
 
 ## Concrete use cases
 
@@ -27,8 +29,9 @@ The design emerged from a practical need: start Codex normally from the Desktop 
 | Long Codex Desktop tasks run while the user is away | Send one useful notification when the task actually completes or needs attention |
 | API or relay work frequently encounters service, transport or authentication errors | Preserve structured error categories, fall back to an unknown-error alert and retry delivery safely |
 | The user pauses a task midway | Distinguish an explicit interruption from failure or normal completion |
+| Codex stops itself, exhausts retries, or pauses automatically | Notify a proven system stop separately; use “needs review” when the actor is uncertain |
 | A task needs approval or more user input | Notify once for each distinct actionable request and stop repeating after the task resumes |
-| Codex is always opened from the Desktop or Start-menu icon | Start the monitor lazily from a supported lifecycle hook and stop it with Desktop |
+| Codex may be opened from a shortcut, command, file association, restore flow, or another normal entry | Use entry-point-independent lifecycle hooks or native process events so the observer follows Desktop startup and shutdown |
 | Official OAuth and API profiles are switched on the same machine | Preserve hooks and monitor state, and suppress false crash alerts during marked maintenance |
 | The messaging platform may change later | Keep detection independent from the selected platform while routing every outbound notification through CC Connect |
 | A legitimate task is quiet for hours | Continue observing without timer-based “stuck” notifications |
@@ -40,14 +43,20 @@ This guide is not a remote-control channel, a general employee-monitoring system
 Copy this sentence into a new Codex task:
 
 ~~~text
-Codex, read and follow `SKILL.en.md` in https://github.com/IIMovoMII/codex-desktop-notification-field-guide, then open the relevant `references/*.en.md` files it routes to. For this Windows machine, build and validate a CC Connect-backed Codex Desktop notifier. Start with read-only discovery and ask which platform I want; obtain my confirmation before installation, binding or live hook writes.
+Codex, read https://github.com/IIMovoMII/codex-desktop-notification-field-guide in full, starting with `SKILL.en.md`, then build and validate a CC Connect-backed Codex Desktop notifier for my machine and requirements.
 ~~~
 
 This is “deployment” by delegation, not a preconfigured bot installer. If the selected CC Connect platform, account or permission is missing, the agent should ask only for the necessary choice and keep credentials outside the conversation.
 
+## Align requirements before implementation
+
+Do not ask for facts the agent can inspect, such as the operating system, Codex build, paths, local event shape, or CC Connect status. Ask only for choices that change the product: which states matter, how much content may be sent, the messaging platform, dedicated versus shared CC Connect, immediate app-start versus first-task startup, and whether secure inbound interaction is wanted.
+
+The user may keep only completion and error alerts, or add approval/input waits, a status UI, multiple platforms, or remote control. Omit unwanted modules. Evidence quality, privacy, durable deduplication, and recovery still need to close the loop for every selected feature.
+
 ## Why one signal is not enough
 
-Hooks are fast, but their event coverage and timing can vary. JSONL contains richer evidence, but reading every file repeatedly is wasteful. Process exit is useful, but it cannot explain why a task stopped. Reliable classification comes from combining small, independent signals.
+Hooks are fast, but their event coverage and timing can vary. Matching command hooks for one event run concurrently, so a `Stop` observed by the notifier can still be followed by another `Stop` hook requesting continuation. `Stop` is therefore a settling candidate, never completion proof by itself. JSONL contains richer evidence, but reading every file repeatedly is wasteful. Process exit is useful, but it cannot explain why a task stopped. Reliable classification comes from combining small, independent signals.
 
 ## Architecture
 
@@ -63,7 +72,7 @@ flowchart LR
     A --> Q[User-selected CC Connect platform]
 ~~~
 
-Hooks wake the system quickly. Windows directory notifications wake the incremental reader when files change. A lightweight periodic reconciliation protects against missed events; it does not scan all conversations or infer failure from elapsed time. The state engine remains platform-neutral internally, but the supported delivery path always ends at CC Connect.
+Hooks wake the system quickly. Native filesystem events wake the incremental reader when files change; Windows directory notifications are one proven implementation. A lightweight periodic reconciliation protects against missed events; it does not scan all conversations or infer failure from elapsed time. The state engine remains platform-neutral internally, but the supported delivery path always ends at CC Connect.
 
 ## Events worth notifying
 
@@ -82,9 +91,9 @@ Do not create a “probably stuck” notification from a timer alone. Codex task
 
 ## Core design rules
 
-1. **Observe Desktop directly.** Do not require the user to launch Codex through a wrapper.
+1. **Observe Desktop directly.** Do not require a wrapper or bind the design to one icon or entry point.
 2. **Use hooks as hints, not absolute truth.** Normalize them and corroborate terminal decisions when needed.
-3. **Tail only appended bytes.** Persist per-file cursors and use Windows filesystem notifications for wakeups.
+3. **Tail only appended bytes.** Persist per-file cursors and use native filesystem events for wakeups.
 4. **Filter the source early.** Ignore CLI tasks, subagents and monitor-generated activity to prevent loops.
 5. **Model transitions per task.** Completion, failure, pause and waiting are states, not keywords.
 6. **Prefer structured errors.** Text matching is a fallback for version gaps; unknown failures still deserve a notification.
@@ -105,9 +114,9 @@ Do not create a “probably stuck” notification from a timer alone. Codex task
 | [Privacy](references/privacy.en.md) | Minimize and redact local and remote data |
 | [Validation](references/validation.en.md) | Test state races, failures, restarts and channel outages |
 
-## Starting with the normal Desktop icon
+## Follow Codex from any launch method
 
-The user should keep launching Codex from the Desktop or Start menu. A safe integration can start lazily from a supported Codex lifecycle hook:
+The user may open Codex from a shortcut, command, file association, restore flow, or another normal entry. The integration must not depend on one shortcut. Prefer a reviewed, trusted global lifecycle hook for lazy startup:
 
 1. the hook records a small local event;
 2. it checks whether the local monitor is alive;
@@ -115,7 +124,7 @@ The user should keep launching Codex from the Desktop or Start menu. A safe inte
 4. it exits quickly;
 5. the monitor later stops after Desktop has exited and pending terminal events have settled; a shared CC Connect instance remains running.
 
-This avoids a startup wrapper and usually avoids a permanent boot-time service. Review and trust the definition, and use either `hooks.json` or inline `[hooks]` in one layer. `SessionEnd` always runs synchronously and is not a per-turn completion signal. If no trusted startup hook exists, explicitly offer a user-approved login-time observer or manual start and mark icon-based lazy startup unsupported.
+This is independent of where the app was launched, but it normally starts at the first supported lifecycle event. If the user needs startup at process creation, use native process events, a service manager, or a lightweight login observer that blocks efficiently instead of scanning every second. Review and trust hook definitions, and use either `hooks.json` or inline `[hooks]` in one layer. `SessionEnd` always runs synchronously and is not a per-turn completion signal.
 
 ## CC Connect platform choice
 
@@ -137,14 +146,14 @@ Personal Weixin and WeCom are different CC Connect platforms. The warning above 
 After the user chooses, keep a narrow local sender contract:
 
 ~~~text
-send(notification) -> accepted delivery identifier
+send(notification) -> accepted; preserve an identifier when available
 healthcheck() -> channel status
 classify_failure(error) -> retryable or permanent
 ~~~
 
 Platform quotas, reply gates and account policies belong in the CC Connect delivery boundary, not the Codex state machine. Configure one chosen platform and prove one real outbound notification before adding another.
 
-Outbound-only is the safer default. Receiving a chat message should not launch Codex CLI or execute commands unless the user designs and secures a separate control plane.
+Ask the user to choose notification-only or inbound-enabled behavior. Notification-only can ignore ordinary messages, as a local installation may already do. If inbound control is requested, make it a separate boundary with explicit senders, allowed actions, confirmations, replay protection, audit, and rate limits; never turn arbitrary text directly into a local command.
 
 ## Hard-won lessons
 
@@ -157,24 +166,25 @@ Outbound-only is the safer default. Receiving a chat message should not launch C
 - Polling file trees every second scales poorly and creates needless disk work. Directory notifications plus cursor-based tailing are calmer and more reliable.
 - A durable outbox prevents a transient messenger outage from losing a task result.
 - A bridge can support many platforms while one platform is still a poor fit; personal Weixin's outbound limits make it unsuitable as the default notification route.
-- Delivery deduplication needs a stable event key, not just matching message text.
+- A `Stop` can race another concurrent `Stop` hook's continuation decision; wait for independent terminal evidence instead of declaring success after a fixed delay.
+- Delivery deduplication needs a stable event key that survives restarts and does not change with title or summary rendering. Retire superseded turns silently so one Desktop exit cannot fan out into many error alerts.
 - Account/API switching should preserve hooks and monitor settings because the auth switcher patches only its owned fields.
 
 ## Using this with a coding agent
 
-Point an agent at [SKILL.md](SKILL.en.md). It should inspect the installed Codex version, local event shapes and CC Connect state, then ask the user to choose a CC Connect platform before implementation. It should explain the personal-Weixin warning, propose a state model, generate synthetic fixtures and implement the notifier only after the platform choice. It should not copy private rollout content into prompts or install CC Connect without explicit user approval.
+Point an agent at [SKILL.en.md](SKILL.en.md). It should inspect the system, installed Codex build, local event shapes, and CC Connect state, then ask one focused set of questions about states, content, startup timing, platform, instance ownership, and inbound needs. It should explain the personal-Weixin warning, propose only the requested modules, generate synthetic fixtures, and obtain approval before installation or live hook writes.
 
 ## Scope
 
-The guide focuses on Codex Desktop on Windows and local, one-way notifications. Exact hook events, process names and JSONL schemas are version-sensitive. Re-run discovery and tests after Codex upgrades.
+The guide targets local Codex Desktop notifications and can be adapted across operating systems and one-way or two-way scenarios. Its field evidence is primarily Windows-based; other platforms should replace file events, process observation, credential storage, and lifecycle integration with native equivalents. Exact hook events, process names, and JSONL schemas remain version-sensitive.
 
 ## Security
 
-Messaging credentials, user IDs, private conversation text and local absolute paths must never enter the repository. The monitor should redact errors and send only the minimum useful result. See [SECURITY.md](SECURITY.en.md).
+Messaging credentials, user IDs, private conversation text and local absolute paths must never enter the repository. The monitor should redact errors and send only the minimum useful result. See [SECURITY.en.md](SECURITY.en.md).
 
 ## Contributing
 
-Bring reproducible signals, race conditions, state fixtures and delivery patterns. Include Codex version context and a validation method. See [CONTRIBUTING.md](CONTRIBUTING.en.md).
+Bring reproducible signals, race conditions, state fixtures and delivery patterns. Include Codex version context and a validation method. See [CONTRIBUTING.en.md](CONTRIBUTING.en.md).
 
 ## License
 

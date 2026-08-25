@@ -31,11 +31,13 @@ Fixtures must not come from private conversations.
 Verify:
 
 - one terminal notification per task turn;
+- a stable event is not resent after restart even if its rendered title or summary changes;
 - explicit failures are not overwritten by weaker completion candidates;
 - transient errors that recover do not emit failure, while retry exhaustion emits one terminal result;
 - user interruption and automatic stop remain distinct, falling back to “needs review” when the actor is unproven;
 - waiting states notify once per distinct request;
 - resumed work can later reach a terminal state;
+- a concurrent `Stop` hook that requests continuation cannot cause premature success, regardless of `stop_hook_active` timing;
 - long silence does not notify;
 - process exit alone does not invent an error, but bounded settling closes as “needs review” when no terminal evidence exists;
 - maintenance markers suppress only the intended crash signal;
@@ -57,6 +59,7 @@ Verify:
 - idle CPU and disk reads stay within a measured budget;
 - multiple hooks still produce one monitor process;
 - the monitor exits cleanly after Desktop and pending work stop.
+- launching Desktop through every locally available normal entry point starts or wakes the monitor according to the selected lifecycle guarantee, without a wrapper command.
 
 ## Delivery assertions
 
@@ -70,7 +73,7 @@ Verify:
 - timeout uncertainty does not create uncontrolled duplicates;
 - platform quota is honored;
 - switching user-selected CC Connect platforms preserves or deliberately handles queued items;
-- inbound chat content cannot launch Codex or local commands.
+- notification-only mode ignores inbound content; when the user selects inbound control, its allowlist, replay protection, command grammar, confirmation and audit boundaries are tested separately.
 
 ## Privacy assertions
 
@@ -97,7 +100,7 @@ Assert they do not appear in:
 
 From a clean stopped state:
 
-1. launch Codex using the normal Desktop or Start-menu entry;
+1. launch Codex through each locally available normal entry point, such as an icon, Start menu, terminal, updater or protocol link;
 2. trigger the first supported lifecycle hook;
 3. confirm one background monitor starts; start CC Connect only when this notifier owns a dedicated instance, otherwise connect to the shared instance;
 4. complete a synthetic task and receive one notification;
@@ -124,7 +127,7 @@ After a Codex upgrade:
 
 Record:
 
-- Windows and Codex versions;
+- operating system, desktop environment and Codex versions;
 - supported states;
 - source-filter result;
 - fixture and race-test result;

@@ -77,6 +77,8 @@ Define deterministic precedence for conflicting signals. An example:
 
 The correct order depends on observed Codex semantics. Record why an event wins and test both arrival orders.
 
+`Stop` by itself must never produce a success notification. Move into `Settling`, consume the bounded stream of late events, and cancel the candidate if any continuation or new activity appears. This protects against another concurrently running `Stop` hook requesting more work after the notification hook has already started. Confirm completion only from an independent, version-proven terminal record.
+
 Classify sanitized error families such as auth/permission, endpoint, rate limit, server, network/proxy/DNS/TLS/WebSocket, model, tool/permission, data shape and unknown. A transient 503 or timeout is only an error candidate while Codex is retrying. If progress resumes and the turn completes, clear it and notify completion only. Finalize failure or `SystemStopped` only after retry exhaustion, explicit termination or automatic-pause evidence. Never label a system stop as user interruption; use `NeedsReview` when the actor cannot be proven.
 
 ## Waiting states
@@ -119,9 +121,11 @@ Derive a stable notification key from fields such as:
 task_key + turn_key + terminal_state + source_event_key
 ~~~
 
-Persist emitted keys. Replaying a hook, restarting the monitor or rereading a late JSONL line must not generate a duplicate.
+Persist emitted keys in a durable ledger. Replaying a hook, restarting the monitor or rereading a late JSONL line must not generate a duplicate. The key must be derived from stable event identity and must not change when a title, summary or display language changes.
 
 Do not deduplicate purely on human-readable text; two different turns can have the same title and message.
+
+Track only the current unfinished turn for each session. If a later turn starts, retire any superseded non-terminal turn silently. A later Desktop exit must not turn every stale turn into a separate abnormal alert.
 
 ## Planned maintenance
 

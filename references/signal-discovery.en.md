@@ -6,7 +6,7 @@ Build the notifier around evidence from the installed Codex version, not a remem
 
 Record:
 
-- Windows and Codex Desktop versions;
+- operating system, desktop environment and Codex Desktop versions;
 - Desktop executable path and process tree;
 - whether the app combines ChatGPT and Codex surfaces;
 - Codex home and rollout roots expressed with generic paths;
@@ -50,7 +50,7 @@ For every hook supported by the installed build, determine:
 - whether it fires for Desktop, CLI or both;
 - whether it can start a background helper without blocking.
 
-Use `SessionStart` for a minimal lazy wake. Treat `Stop` as a completion candidate, return valid JSON without requesting continuation, and allow stronger late evidence to win. Do not copy the final assistant message by default; if the user opts in, write only a locally bounded and redacted excerpt. `SessionEnd` does not fire merely because the user switches tasks, may occur after close/archive/delete or a long idle period, and always runs synchronously even when configured as async. Use it only for cleanup, never per-turn completion or lazy async startup.
+Use `SessionStart` for a minimal lazy wake. Matching command hooks for one event run concurrently: another `Stop` hook may still request continuation, and `stop_hook_active` does not prove all peers have settled. Treat `Stop` only as a completion candidate, return valid JSON without requesting continuation, and let later activity cancel that candidate. Do not copy the final assistant message by default; if the user opts in, write only a locally bounded and redacted excerpt. `SessionEnd` does not fire merely because the user switches tasks, may occur after close/archive/delete or a long idle period, and always runs synchronously even when configured as async. Use it only for cleanup, never per-turn completion or lazy async startup.
 
 Hooks should not:
 
@@ -74,7 +74,7 @@ Map:
 - late records appended after a stop signal;
 - archived-file behavior.
 
-Do not assume the first line is the only metadata source. Keep the parser tolerant of unknown records and strict about malformed records that affect a decision.
+Do not assume the first line is the only metadata source. Prefer structured, version-proven events over matching human-readable error text. Keep the parser tolerant of unknown records and strict about malformed records that affect a decision. Treat JSONL and SQLite layouts as internal formats: gate parser changes by Codex version and degrade unsupported classifications to “needs review” instead of guessing.
 
 ## Process evidence
 
@@ -85,7 +85,7 @@ Discover the exact process set that means Desktop is alive. Process evidence can
 - begin a bounded settling period after exit;
 - stop the local monitor when no pending work remains.
 
-Process disappearance alone cannot classify the task as failed. Windows updates, user exit and planned auth switching can all close Desktop intentionally.
+Process disappearance alone cannot classify the task as failed. Operating-system updates, user exit and planned auth switching can all close Desktop intentionally.
 
 After a bounded final drain, an active task with Desktop gone and no terminal evidence must close as “needs review.” If the app restarts and the same task resumes before finalization, cancel that candidate.
 

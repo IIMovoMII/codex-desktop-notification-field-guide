@@ -23,4 +23,13 @@ If a messaging credential or recipient identifier was exposed:
 4. review channel and local bridge logs;
 5. disclose only a redacted timeline.
 
-Inbound command execution is outside the default design. Any implementation that adds it requires a separate security review.
+## Design boundary
+
+- Keep messaging secrets in a restricted local directory or the platform's native secret store.
+- Hooks write minimal local events and do not access the network.
+- Recommended minimal notifications omit prompts, tool arguments, results, and full responses unless the user opts into a redacted excerpt.
+- Inbound control is an optional user-selected module. If enabled, require an authenticated sender allowlist, replay protection, a narrow command grammar, confirmation for sensitive actions, audit logging, rate limiting, a kill switch, and a separate security review. Notification-only implementations should ignore inbound content.
+- Redact delivery queues and logs and define a retention period.
+- Require user review before installing live hooks or binding a platform account.
+
+Public fixtures must be synthetic; do not publish a lightly renamed private conversation.

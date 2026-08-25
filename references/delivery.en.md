@@ -30,7 +30,7 @@ The local CC Connect sender should expose:
 - health check;
 - send one normalized notification;
 - classify retryable versus permanent failure;
-- return a provider delivery identifier when available;
+- report accepted delivery; preserve a provider delivery identifier only when the selected CC Connect path actually provides one;
 - redact its own error details;
 - report quota or authorization status.
 
@@ -53,7 +53,7 @@ For permanent failures:
 - do not loop forever;
 - never include the channel secret in the warning.
 
-Remove or mark an item delivered only after confirmed acceptance. If a provider cannot offer idempotency, keep the local deduplication key and tolerate the narrow uncertainty after a network timeout.
+Remove or mark an item delivered only after the selected CC Connect command or API reports success. A generic success response such as `status=ok` is sufficient evidence of acceptance when that is all the bridge exposes; do not invent a provider message identifier. If a provider cannot offer idempotency, keep a restart-stable local deduplication key and tolerate the narrow uncertainty after a network timeout. The key must not depend on rendered title or summary text.
 
 ## Rate and reply limits
 
@@ -85,9 +85,9 @@ Do not make the monitor dependent on an interactive QR flow after every restart.
 
 Prefer a dedicated CC Connect project and fixed destination for notifications. The sender should forward the normalized payload through a proven outbound path without asking another model to expand it, and must never treat CC Connect logs, prompts or agent replies as notification content. Reuse an existing project only after proving that a notification cannot trigger an extra agent conversation; otherwise create a dedicated project. The real test should compare the received text with the local outbox payload.
 
-## Outbound-only boundary
+## Optional inbound boundary
 
-The notifier's CC Connect integration sends notifications and ignores inbound chat content.
+Notification-only is the smallest implementation, but it is a user choice rather than a mandatory repository policy. Ask whether the user wants only notifications or also wants secured inbound control. The notification pipeline must remain independent either way.
 
 Inbound control would require a separate security design:
 
@@ -99,7 +99,7 @@ Inbound control would require a separate security design:
 - rate limiting;
 - no arbitrary shell execution.
 
-Unless those controls are intentionally designed and reviewed, an inbound message must never launch Codex CLI or execute local actions.
+If inbound control is selected, implement and review those controls as a separate module. Otherwise ignore inbound content. Never enable arbitrary shell execution merely because CC Connect supports interactive sessions.
 
 ## Changing CC Connect platforms
 
