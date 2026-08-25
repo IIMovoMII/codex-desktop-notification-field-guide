@@ -20,7 +20,7 @@ This repository is **not a bot package or a preconfigured messaging bridge**. It
 
 > The repository describes outcomes, state lessons, and acceptance criteria—not one mandatory codebase. Adapt observation, UI, message content, and optional features to the local system. Windows mechanisms are validated examples, not the only cross-platform design.
 
-The design emerged from a practical need: start Codex through any normal entry point, leave a long task running, and receive a message when it completes, fails, pauses, or needs attention. The companion must not depend on a special shortcut or wrapper. Long silence is allowed, and the monitor should not burn CPU scanning all history or expose prompts to a remote service.
+The design emerged from a practical need: start Codex through any normal entry point, leave a long task running, and receive a message when it completes, fails, pauses, or needs attention. The companion must not depend on a special shortcut or wrapper.
 
 ## Concrete use cases
 
