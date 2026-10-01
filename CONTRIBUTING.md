@@ -29,7 +29,7 @@
 3. 增加或更新合成夹具说明。
 4. 说明对隐私、重复投递和恢复行为的影响。
 5. 共同事实变化时同步修改中英文文档。
-6. 运行 `python scripts/validate_pack.py`。
+6. 运行 `python scripts/validate_pack.py` 和 `python -m unittest discover -s tests`；它们检查文档与检查器，不代表提醒程序通过运行测试。
 7. 确认差异中没有凭据、私人标识或真实对话。
 
 提交内容默认采用本仓库的 MIT 许可。

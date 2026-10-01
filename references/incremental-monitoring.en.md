@@ -1,105 +1,49 @@
-# Incremental monitoring
+# Incremental monitoring and lifecycle
 
-Low overhead comes from reacting to filesystem changes and remembering exactly how far each relevant file has been read.
+[中文](incremental-monitoring.md)
 
-## Event-driven wakeups
+Following Desktop should not depend on a particular icon. First choose between starting after the first valid event and starting when the Desktop process appears.
 
-Use the operating system's native filesystem event mechanism through a well-tested library or a small native wrapper—for example `ReadDirectoryChangesW` on Windows, FSEvents on macOS, or inotify on Linux. Watch only discovered rollout roots.
+## Startup choices
 
-A change notification says “something changed,” not what the final task state is. Use it to schedule a bounded incremental read.
+| Choice | Approach | Acceptance boundary |
+| --- | --- | --- |
+| Task-triggered | A trusted global hook starts a helper | No guarantee of a running monitor before an event or when hooks do not run |
+| Process-triggered | Native process events, a service manager, or a lightweight login observer | Cover different launch paths and Desktop already running when the observer starts |
 
-Expect:
+A special wrapper is not entry-point-independent integration. Explain any persistent observer and resume-from-sleep behavior according to the user's choice.
 
-- duplicate notifications;
-- coalesced notifications;
-- rename pairs;
-- queue overflow;
-- changes before a watcher is fully attached.
+## Hook startup case
 
-A periodic lightweight reconciliation should repair missed wakeups. It should compare directory metadata and known cursors, not parse every historical line.
+Windows testing exposed two independent issues: a single early process snapshot can miss startup, and quoted executable paths that work in cmd need a call operator in PowerShell. A reference flow:
 
-## Cursor model
+1. Persist a minimal hook event, hand off quickly, and bound work per launch.
+2. Serialize helper startup using a user-scoped OS mutex/file lock. Do not delete a lock merely because its file is over 30 seconds old; the owner may still be working.
+3. Retry Desktop and session-metadata discovery within a deadline. Wait for an incomplete first record, reject a proven CLI/subagent source, and require a current process rather than only an old Desktop transcript.
+4. Verify process identity and readiness. A PID file does not prove liveness; liveness does not prove watchers or the bridge are ready. Account for PID reuse across starts.
+5. Retry transient startup failures a small number of times. Missing configuration, binding, or permission needs a visible reason. Later valid hooks can retry without infinite spawning.
+6. Log the trigger, phase, duration, result, and error category without prompts, tokens, or raw exception bodies.
 
-For each file, persist:
+A startup lock only protects startup. Enforce single-instance ownership throughout monitor execution, including races with manual repair. Respect pause/disable state so hooks do not restart a deliberately disabled notifier.
 
-- stable file identity when available;
-- normalized relative path;
-- last byte offset;
-- observed size and modification time;
-- trailing partial-line bytes;
-- session/task identity discovered from metadata;
-- parser schema version.
+“Wait up to 30 seconds for discovery, then attempt service startup three times” is an example, not a universal setting or a 30-second total-runtime guarantee.
 
-Read in binary mode, split complete newline-delimited records, and keep an incomplete tail until the next append. Decode with the proven file encoding.
+## Test the actual command execution
 
-## Rotation, truncation and replacement
+Pin a verified interpreter and encoding, then quote for the actual shell. PowerShell needs `&` to invoke a quoted executable path; handle quotes, dollar signs, and other path characters literally. UTF-8 fixes encoding, not shell syntax.
 
-If:
+Tests should match Desktop's shell, working directory, environment, and timeout. Python's `shell=True` normally uses cmd on Windows and cannot stand in for PowerShell. Ensure detached helpers do not inherit hook input/output pipes and survive normal hook exit, job-object cleanup, and intended timeout behavior. After changes, reload/trust the hooks and test a real cold start.
 
-- size is smaller than the cursor;
-- file identity changes;
-- the prefix hash no longer matches;
-- a rename produces a new path;
+## Incremental reads and recovery
 
-then do not continue from the old offset. Reclassify the file, determine whether it is a new session or replacement, and rebuild from a safe bounded point.
+Use native file notifications or an equivalent event interface. Store file identity and committed byte position; read only new complete records. Coalesce duplicate wakeups, retain partial lines, and recover boundedly after replacement, truncation, or path aliases rather than using an invalid offset.
 
-Never silently seek to the end of an unknown replacement; that can miss its terminal event.
+Establish an explicit first-install baseline to avoid replaying all history. With existing cursors, catch up missing new events. Reconcile the watcher-attachment race once, and reconcile after sleep or notification overflow. Do not wait for another new message before processing an existing backlog.
 
-## Startup reconciliation
+Commit a cursor only after its state and outbound decision are recoverable, using a transaction or replayable journal. Bound reads, concurrency, and log retention. If needed, reconcile active-file metadata infrequently; do not reread all bodies or infer failure from silence.
 
-At monitor startup:
+## Separate observation from sending
 
-1. load cursor state;
-2. inventory only relevant roots;
-3. identify files changed since the last clean shutdown;
-4. validate identity and cursor bounds;
-5. read new bytes;
-6. attach watchers;
-7. repeat a narrow reconciliation to close the startup race.
+Identify the Desktop main application so an auxiliary service restart is not mistaken for app exit. With multiple windows, check remaining relevant instances. After confirmed exit, drain late events for a bounded period and let the [state machine](state-machine.en.md) determine the outcome.
 
-For first use, establish a baseline without notifying on every old completed task. Mark historical terminal events as seen, then notify only for work active after the baseline boundary.
-
-## Process lifecycle
-
-The monitor must follow Codex Desktop regardless of whether the user launches it from an icon, Start menu, terminal, updater, protocol link or another normal entry point. Two valid product choices are:
-
-- lazy lifecycle: a trusted Codex lifecycle hook starts the single-instance monitor on the first observable event;
-- immediate lifecycle: an operating-system process event or user-approved login observer starts the monitor as soon as Desktop appears.
-
-Ask which guarantee the user wants. Do not require a wrapper command. The monitor can exit when:
-
-- no Desktop process remains;
-- no relevant task is settling;
-- the outbox is durably saved;
-- the delivery bridge has no required local cleanup.
-
-Use an idempotent single-instance lock so several hooks or process events do not launch several monitors. Restore the persisted event ledger before accepting new events so restart races cannot duplicate alerts. A manual health command remains useful for repair and diagnosis, but normal Desktop launch should not depend on it.
-
-If the notifier owns a dedicated CC Connect process, it may stop that process after the outbox settles. If it shares an existing CC Connect instance, it must only disconnect and must never terminate the shared process. If no trusted lifecycle hook or process observer exists, explicitly offer a user-approved login-time observer or manual start and state the reduced guarantee; do not claim automatic following works.
-
-## CPU and disk budget
-
-Measure:
-
-- filesystem wakeups per active turn;
-- bytes read per append;
-- periodic reconciliation duration;
-- idle CPU;
-- state-file write frequency;
-- startup catch-up time.
-
-Batch cursor persistence sensibly while ensuring that a crash only replays a small, deduplicated window.
-
-No task-status logic should scan unchanged files once per second.
-
-## SQLite use
-
-Use SQLite only for metadata that is not safely available elsewhere, such as a task title. Open read-only when possible, respect WAL semantics and use bounded retry for transient locks.
-
-Do not query full message bodies merely to build a notification. Cache a sanitized title once discovered.
-
-## Parser evolution
-
-Unknown JSONL record types should normally be ignored and counted. A changed record that affects terminal classification should fail safely into an “unknown evidence” path and be captured as a redacted fixture for review.
-
-Version the parser and record which Codex build produced each fixture.
+Stopping observation and stopping delivery are separate decisions. Immediate exit defers pending messages; bounded sender-only finishing keeps a dedicated bridge alive briefly. Implement the selected policy through [delivery](delivery.en.md). A shared CC Connect instance is not owned by the notifier and must not be stopped with Desktop.

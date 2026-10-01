@@ -1,140 +1,60 @@
-# Validation
+# Validation and troubleshooting
 
-Test signal classification, resource use, privacy and delivery as one system.
+[中文](validation.md)
 
-## Fixture set
+Validate the selected features, not every possible extension. Label evidence by stage: files written, command passed, Desktop loaded, real state detected, message visible on the phone.
 
-Create synthetic, version-labeled fixtures for:
+## Minimum acceptance path
 
-- normal completion;
-- structured server error, including retryable service failures;
-- transient error followed by successful recovery;
-- retry exhaustion and version-proven automatic pause;
-- malformed or unfamiliar error;
-- user interruption;
-- approval request and resume;
-- input request and resume;
-- completion followed closely by interruption;
-- interruption followed closely by completion;
-- late JSONL append after a hook;
-- Desktop process exit during work;
-- planned maintenance exit;
-- long silent task;
-- CLI task;
-- subagent task;
-- file truncation, replacement and partial line.
+1. Use synthetic events for classification, deduplication, recovery, and content filtering.
+2. Execute the installed hook command in the actual shell. Check exit status, stdout, Unicode/spaces/special characters in paths, and helper survival.
+3. When convenient for the user, actually close and reopen Desktop from normal entry points and complete hook trust. Verify first-event startup with one monitor. Test at least two real local entry points; process-triggered designs also need startup without a hook.
+4. Trigger a selected normal state and compare the outbox, bridge acceptance, and phone-visible content. Verify errors, interruption, and waits according to selected scope.
+5. Test pending messages at exit, a temporary outage, and restart against the chosen exit/catch-up policy.
+6. If account switching is in scope, use the existing switch workflow and accept each mode after restart. Do not change accounts or disrupt live tasks merely to test.
 
-Fixtures must not come from private conversations.
+Manually invoking a hook from the current window is not a real Desktop cold start. Correct files do not establish that an old process reloaded them or that hooks are trusted.
 
-## State assertions
+## High-value boundary cases
 
-Verify:
+| Area | Meaningful cases |
+| --- | --- |
+| Startup | Temporarily invisible process, partial metadata, concurrent hooks, alive-but-unready service, CLI/subagent, missing config, lock release after helper exit |
+| State | Concurrent Stop continuation, candidate cancellation, transient 503 then success, final failure, completion/interruption order, late old turn, long silence |
+| Waiting | Duplicate request, response/resume, resolved-but-unsent alert, new request |
+| Exit | Main app exit, auxiliary restart, multiple windows, marker expiry, late writes, reopening |
+| Persistence | Partial line, replacement, truncation, path aliases, overflow, sleep/resume, crash between cursor/state/enqueue |
+| Delivery | Unready endpoint, timeout, quota, expired auth, crash after acceptance, backlog drain, destination change, shared-instance survival |
+| Content | Synthetic secrets, paths, long text, quotes/newlines, changed titles without duplicate notices |
+| Inbound, if selected | Explicit target, duplicate titles, stale mapping, busy task, unauthorized/replayed message, real continuation of the original task |
 
-- one terminal notification per task turn;
-- a stable event is not resent after restart even if its rendered title or summary changes;
-- explicit failures are not overwritten by weaker completion candidates;
-- transient errors that recover do not emit failure, while retry exhaustion emits one terminal result;
-- user interruption and automatic stop remain distinct, falling back to “needs review” when the actor is unproven;
-- waiting states notify once per distinct request;
-- resumed work can later reach a terminal state;
-- a concurrent `Stop` hook that requests continuation cannot cause premature success, regardless of `stop_hook_active` timing;
-- long silence does not notify;
-- process exit alone does not invent an error, but bounded settling closes as “needs review” when no terminal evidence exists;
-- maintenance markers suppress only the intended crash signal;
-- CLI and subagent activity is filtered;
-- unknown terminal failures still produce a useful generic alert.
+Test different orders to expose actual races, not the presence of implementation function names. Use synthetic privacy values. Measure idle CPU, bytes read, startup latency, and queue age instead of claiming unmeasured “zero overhead.”
 
-Run race cases in both event orders.
+## Targeted troubleshooting
 
-## Monitoring assertions
+| Symptom | Evidence first | Acceptance after repair |
+| --- | --- | --- |
+| Hook `exit code 1`, no application log | Actual shell, syntax, paths, imports, stdin decoding | Reproduce in the same execution context, then test SessionStart/Stop |
+| Hooks written but not invoked | Active layer, trust, loaded definition | Real triggering, not file inspection alone |
+| Process alive but no messages | Process identity, endpoint readiness, queue timing/errors | Real connection and synthetic delivery in that instance |
+| Batch arrives after restart | Sender lifetime, backoff, exit policy | Catch-up at the agreed time |
+| Many notices for one incident | Current turn, terminal slot, ledger, uncertain delivery | Replay/restart without creating new local notices |
+| Unknown events after upgrade | Version and minimal field differences | Verify affected states after adapter update |
 
-Verify:
+Find the cause before changing behavior. Automate recovery for naturally recurring conditions; a one-time configuration mistake does not justify continuous full scans. A broken bridge cannot reliably carry its own health alert, so keep local diagnosis available.
 
-- only appended bytes are parsed;
-- partial lines survive restart;
-- file replacement invalidates the old cursor;
-- directory notification overflow triggers bounded reconciliation;
-- first use does not replay all old tasks;
-- monitor startup closes the watcher-attachment race;
-- idle CPU and disk reads stay within a measured budget;
-- multiple hooks still produce one monitor process;
-- the monitor exits cleanly after Desktop and pending work stop.
-- launching Desktop through every locally available normal entry point starts or wakes the monitor according to the selected lifecycle guarantee, without a wrapper command.
+## Limits of field evidence
 
-## Delivery assertions
+| Reference environment | Available evidence | Does not establish |
+| --- | --- | --- |
+| Windows, Codex core 0.159.2, CC Connect 1.5.0 | Local reference implementation's startup/state/outbox regression tests and actual PowerShell hook-command tests | A runtime shipped in this repo or compatibility across all systems/builds |
+| Windows, CC Connect 1.5.0 | Historical QQ delivery, local socket-path failure, and shortened-path verification | Readiness from path existence or a universal runtime-independent length limit |
+| Deployment with corrected hook command | Command-level verification | Unperformed Desktop reload, trust, or cold-start checks |
 
-Verify:
+These are sources of experience, not certification of downloadable software. This repository contains neither the runtime nor its full runtime fixture suite.
 
-- notification is durable before send;
-- successful delivery removes or marks it once;
-- temporary outage retries with backoff;
-- permanent auth failure enters a visible dead-letter state;
-- restart does not lose queued items;
-- timeout uncertainty does not create uncontrolled duplicates;
-- platform quota is honored;
-- switching user-selected CC Connect platforms preserves or deliberately handles queued items;
-- notification-only mode ignores inbound content; when the user selects inbound control, its allowlist, replay protection, command grammar, confirmation and audit boundaries are tested separately.
+## Maintenance and handoff
 
-## Privacy assertions
+Provide local status/diagnosis, targeted retry, pause/resume, update, and uninstall paths in the chosen interface. Bound logs, queues, and recovery-copy retention. On upgrade, retest affected parsing, hook execution, startup, and delivery; do not inspect the whole system for every notice.
 
-Inject synthetic:
-
-- API keys;
-- OAuth-like tokens;
-- signed URLs;
-- email addresses;
-- absolute home paths;
-- long provider errors;
-- tool arguments.
-
-Assert they do not appear in:
-
-- hook spool;
-- task-state store;
-- outbox;
-- channel payload;
-- normal logs;
-- test snapshots.
-
-## Lifecycle assertions
-
-From a clean stopped state:
-
-1. launch Codex through each locally available normal entry point, such as an icon, Start menu, terminal, updater or protocol link;
-2. trigger the first supported lifecycle hook;
-3. confirm one background monitor starts; start CC Connect only when this notifier owns a dedicated instance, otherwise connect to the shared instance;
-4. complete a synthetic task and receive one notification;
-5. exit Desktop;
-6. confirm terminal events settle and notifier-owned helpers stop while a shared CC Connect instance remains running;
-7. repeat after an auth/API profile switch.
-
-The user should not need a wrapper command for normal use.
-
-## Upgrade gate
-
-After a Codex upgrade:
-
-1. rerun signal discovery;
-2. compare hook inputs and timing;
-3. generate fresh redacted fixtures;
-4. compare JSONL schemas and source identifiers;
-5. rerun state and race tests;
-6. verify process detection;
-7. test one real outbound notification;
-8. enable the updated parser only after the gate passes.
-
-## Release evidence
-
-Record:
-
-- operating system, desktop environment and Codex versions;
-- supported states;
-- source-filter result;
-- fixture and race-test result;
-- idle resource measurements;
-- retry and restart result;
-- privacy scan result;
-- selected CC Connect platform and known quota limits;
-- known ambiguous states.
-
-Do not include private task IDs, credentials, local paths or conversation bodies.
+State what is verified, unsupported, pending binding/restart, and recoverable. The document validator checks structure, local links, bilingual reference coverage, and limited privacy patterns. It does not prove translation semantics, external links, hook protocols, or runtime behavior.

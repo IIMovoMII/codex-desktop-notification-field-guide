@@ -1,6 +1,6 @@
 # Security policy
 
-This field guide describes software that observes private local task state and sends messages through an external channel.
+[中文](SECURITY.md)
 
 ## Never publish
 
@@ -13,22 +13,16 @@ This field guide describes software that observes private local task state and s
 
 ## Reporting a security issue
 
-Use a GitHub private security advisory for a vulnerability in this guide or its validator. Do not open a public issue containing secrets or private task content.
+Prefer GitHub private vulnerability reporting when enabled for this repository. Regardless of channel, do not publish secrets or real task content; start with affected versions, a minimal synthetic reproduction, and redacted field structure.
 
-If a messaging credential or recipient identifier was exposed:
-
-1. revoke or rotate the credential;
-2. invalidate the binding where supported;
-3. remove the value from visible content and Git history;
-4. review channel and local bridge logs;
-5. disclose only a redacted timeline.
+If messaging credentials were exposed, revoke or rotate the affected credentials, inspect bindings and use records as supported, then clean up public content and related Git history. If only a recipient identifier was exposed, assess its actual authority and privacy impact rather than treating the identifier itself as an authentication token.
 
 ## Design boundary
 
 - Keep messaging secrets in a restricted local directory or the platform's native secret store.
 - Hooks write minimal local events and do not access the network.
 - Recommended minimal notifications omit prompts, tool arguments, results, and full responses unless the user opts into a redacted excerpt.
-- Inbound control is an optional user-selected module. If enabled, require an authenticated sender allowlist, replay protection, a narrow command grammar, confirmation for sensitive actions, audit logging, rate limiting, a kill switch, and a separate security review. Notification-only implementations should ignore inbound content.
+- The user chooses inbound behavior. If enabled, restrict senders and actions, with confirmation, replay protection, audit, rate limits, and a disable control. Do not turn arbitrary text directly into local commands.
 - Redact delivery queues and logs and define a retention period.
 - Require user review before installing live hooks or binding a platform account.
 

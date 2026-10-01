@@ -1,132 +1,42 @@
 # Signal discovery
 
-Build the notifier around evidence from the installed Codex version, not a remembered event schema.
+[中文](signal-discovery.md)
 
-## Runtime inventory
+Establish what this machine can observe before promising notification states.
 
-Record:
+## Local inventory
 
-- operating system, desktop environment and Codex Desktop versions;
-- Desktop executable path and process tree;
-- whether the app combines ChatGPT and Codex surfaces;
-- Codex home and rollout roots expressed with generic paths;
-- hook configuration location and supported hook names;
-- JSONL record types emitted during a controlled task;
-- SQLite metadata needed for task title or project identity;
-- source fields that distinguish Desktop, CLI and subagents;
-- installed CC Connect version, configuration location and candidate platforms.
+Inspect the OS, Desktop and bundled core versions, process tree, session shell, hook sources and trust, event storage, and CC Connect version and lifecycle. Record fields, types, and ordering without printing credentials or conversations.
 
-Do not print credentials, prompt bodies or conversation text.
+Separate Codex task/turn identity, notification identity, and CC Connect destination identity. Titles are display text, not routing or deduplication keys. Distinguish Desktop main tasks, CLI, subagents, and merged-app Chat/Work surfaces. Sharing a sidebar does not imply sharing a local event format.
 
-## Controlled observation set
+## What hooks establish
 
-Create disposable, non-sensitive tasks that each exercise one outcome:
+Key points checked against the [OpenAI Hooks reference](https://learn.chatgpt.com/docs/hooks) on 2026-10-02:
 
-1. normal short completion;
-2. explicit tool error;
-3. transport or server error;
-4. user interruption;
-5. approval request;
-6. user-input request;
-7. Desktop exit during a task;
-8. long-running work with no event for an extended period;
-9. CLI task;
-10. subagent task.
+| Signal | Use and limit |
+| --- | --- |
+| `SessionStart` and submission events | Can wake startup; do not establish background readiness |
+| `Stop` | Matching command hooks run concurrently and another may continue the turn; only a settling candidate |
+| `stop_hook_active` | Describes prior continuation, not whether other hooks have finished |
+| `Interrupt`, approval, or input signals | Verify support locally; interruption and waiting require explicit evidence |
+| `SessionEnd` | Session cleanup; always synchronous, not a per-turn completion hook |
+| `transcript_path` | May be null; the transcript format is not a stable hook interface |
 
-Capture only event structure, field names, ordering and timing. Replace titles, identifiers, paths and bodies with synthetic values before turning observations into fixtures.
+Non-managed hooks require trust; changing a definition may require review again. Inspect existing `hooks.json` and inline `[hooks]` in the same layer, reuse the active representation, and avoid duplicate installation or removing others' hooks.
 
-## Hooks
+Hooks write minimal events, optionally start a helper, and return promptly using the event's output contract. They do not perform network delivery, full-history scans, or model inference. Keep diagnostic text out of protocol stdout.
 
-Use the current [official Hooks reference](https://learn.chatgpt.com/docs/hooks) as the baseline. Review the active hook source and trust state; use either `hooks.json` or inline `[hooks]` in one layer to avoid a merge warning. Changed non-managed definitions may require review again.
+## Build versioned evidence
 
-For every hook supported by the installed build, determine:
+Use non-sensitive tasks for selected states: completion, user interruption, recoverable and terminal errors, approval/input requests, and resumption. Record correlation fields, real ordering, late writes, and duplicates, then author synthetic fixtures from scratch.
 
-- when it fires;
-- whether Codex waits for it;
-- input delivery format;
-- exit-code behavior;
-- timeout behavior;
-- environment inherited by the hook;
-- whether it fires for Desktop, CLI or both;
-- whether it can start a background helper without blocking.
+Prefer public structured interfaces exposed by the installed version. If JSONL or SQLite is needed, define minimal fields and proven semantics, read index metadata only, and record parser capabilities and versions. Ignore unrelated new records; when a changed field affects classification, suspend that inference with a visible local reason while retaining other proven capabilities.
 
-Use `SessionStart` for a minimal lazy wake. Matching command hooks for one event run concurrently: another `Stop` hook may still request continuation, and `stop_hook_active` does not prove all peers have settled. Treat `Stop` only as a completion candidate, return valid JSON without requesting continuation, and let later activity cancel that candidate. Do not copy the final assistant message by default; if the user opts in, write only a locally bounded and redacted excerpt. `SessionEnd` does not fire merely because the user switches tasks, may occur after close/archive/delete or a long idle period, and always runs synchronously even when configured as async. Use it only for cleanup, never per-turn completion or lazy async startup.
+Test source filtering with one Desktop, CLI, and subagent case each. A Windows example using `source="vscode"` is not a permanent product contract. Explicitly exclude cloud sessions with no local evidence rather than searching private files to guess.
 
-Hooks should not:
+## Inventory result
 
-- call the messaging network;
-- parse large history files;
-- wait for another process;
-- read prompt content unnecessarily;
-- start Codex CLI.
+Produce a small table of selected state, evidence, correlation fields, support, and remaining checks. Mark input waiting unsupported without a signal. Mark installed-but-unexecuted hooks as pending load/trust.
 
-## JSONL
-
-Map:
-
-- session metadata;
-- task source identifier;
-- turn start and completion records;
-- structured error fields;
-- interruption records;
-- approval and input requests;
-- assistant final-output boundaries;
-- late records appended after a stop signal;
-- archived-file behavior.
-
-Do not assume the first line is the only metadata source. Prefer structured, version-proven events over matching human-readable error text. Keep the parser tolerant of unknown records and strict about malformed records that affect a decision. Treat JSONL and SQLite layouts as internal formats: gate parser changes by Codex version and degrade unsupported classifications to “needs review” instead of guessing.
-
-## Process evidence
-
-Discover the exact process set that means Desktop is alive. Process evidence can:
-
-- wake reconciliation when the app starts;
-- suppress startup before Desktop exists;
-- begin a bounded settling period after exit;
-- stop the local monitor when no pending work remains.
-
-Process disappearance alone cannot classify the task as failed. Operating-system updates, user exit and planned auth switching can all close Desktop intentionally.
-
-After a bounded final drain, an active task with Desktop gone and no terminal evidence must close as “needs review.” If the app restarts and the same task resumes before finalization, cancel that candidate.
-
-## Source filtering
-
-Find a stable, version-proven way to accept only user-facing Desktop tasks. Possible evidence includes:
-
-- a session source field;
-- parent task relationship;
-- process ancestry;
-- project or surface metadata.
-
-Do not filter by title text. Build synthetic fixtures for Desktop, CLI and subagent events and assert that only intended tasks reach notification state.
-
-## CC Connect delivery discovery
-
-CC Connect is required. Before installation or configuration, inspect whether it is already present and read [CC Connect platform selection](cc-connect-platform-selection.en.md). Then present the supported choices and ask the user which one to connect.
-
-For each candidate CC Connect platform, determine:
-
-- whether the platform supports outbound bot messages;
-- binding or authorization flow;
-- credential storage needs;
-- daily or burst quotas;
-- reply gates;
-- message-length limits;
-- retry semantics;
-- duplicate-delivery behavior;
-- whether CC Connect can report confirmed acceptance.
-
-Do not infer the platform from an old binding. Do not recommend personal Weixin for unattended notifications; explain its outbound budget and session limitations, distinguish it from WeCom, and require an explicit choice if the user insists.
-
-## Discovery output
-
-Produce:
-
-- a versioned signal table;
-- redacted synthetic fixtures;
-- a supported-state table;
-- known ambiguous cases;
-- source-filter rules;
-- monitor lifecycle evidence;
-- selected CC Connect platform, capability and quota notes;
-- assumptions that must be retested after upgrade.
+Observe the smallest missing case next. A small feature should not become a project to scan every historical conversation.

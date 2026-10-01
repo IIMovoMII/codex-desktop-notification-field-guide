@@ -1,116 +1,67 @@
-# Delivery through CC Connect
+# Delivery and backlog recovery
 
-Reliable notification delivery is a queueing problem with CC Connect as the required bridge and a user-selected CC Connect platform.
+[中文](delivery.md)
 
-## Durable outbox
+The state machine produces notices; the CC Connect sender delivers them. Keep their failure categories separate.
 
-Persist a notification before attempting network delivery. A record can contain:
+## A notification's lifecycle
 
 ~~~text
-notification_id
-deduplication_key
-created_at
-task_title_redacted
-state
-summary_redacted
-attempt_count
-next_attempt_at
-cc_connect_platform
-schema_version
+Persist → attempt when due → bridge explicitly accepts → record locally
+             ↘ transient failure: retain and back off
+             ↘ action needed: retain and pause destination
+             ↘ missing acknowledgement: outcome uncertain
 ~~~
 
-Do not include prompts, tool arguments, credentials or raw rollout records.
+Keep a stable local ID, task/turn correlation, state, sanitized content, event time, destination revision, attempt count, and next attempt time. Specify both CC Connect project and destination session rather than choosing the first active session.
 
-Use atomic state updates or a small transactional database. After a crash, every accepted-but-unconfirmed item should be safe to retry.
+The checked [CC Connect v1.5.0 send command](https://github.com/chenhg5/cc-connect/blob/17c61062c2f9ce9bcdd45a2082e491f9743a2770/cmd/cc-connect/send.go) prints generic success; its [internal API](https://github.com/chenhg5/cc-connect/blob/17c61062c2f9ce9bcdd45a2082e491f9743a2770/core/api.go) returns `status=ok`. Neither is a phone read receipt or a remote message ID that the adapter can require. Recheck the contract on upgrade.
 
-## CC Connect sender contract
+A crash after acceptance but before local bookkeeping, or a timeout after remote receipt, creates uncertainty. Without remote idempotency, both zero loss and zero duplication cannot be guaranteed. Keep the same notification ID and use bounded retry or review according to the chosen policy; do not call indefinite retransmission safe.
 
-The local CC Connect sender should expose:
+## Bounded retries
 
-- health check;
-- send one normalized notification;
-- classify retryable versus permanent failure;
-- report accepted delivery; preserve a provider delivery identifier only when the selected CC Connect path actually provides one;
-- redact its own error details;
-- report quota or authorization status.
+Back off transient network/service failures with jitter and any platform retry-after value; persist the next attempt. Enforce a real send timeout so one hanging item cannot block the queue. Add a caller deadline where the chosen send path lacks one.
 
-The Codex state machine should not know platform-specific request shapes. The sender translates the normalized notification into the selected CC Connect project and session.
+Separate invalid auth/target, temporarily exhausted quotas, network errors, and uncertain outcomes. Quotas may recover and are not always permanent failures. Retain unknown failures and surface them after limited attempts. Pause destinations requiring rebinding or configuration repair, then allow targeted recovery.
 
-## Retry policy
+Drain due items in bounded batches with rate limits and fair scheduling. Avoid needlessly slow one-item-per-loop drains and unlimited recovery bursts. Preserve original event times and optionally label delayed delivery. Agree on expiry, coalescing, or discarding beforehand; never silently empty the queue.
 
-For retryable failures:
+## Why a restart releases many messages
 
-- use bounded exponential backoff with jitter;
-- honor a provider retry-after value;
-- persist the next attempt time;
-- cap rapid retries;
-- keep the item in the outbox.
+Check four facts first: oldest pending time, last failure category, next retry time, and actual sender lifetime.
 
-For permanent failures:
+- Persisted but stopped with Desktop: the messages survived while retries waited for another run.
+- Process alive but send path unavailable: inspect readiness, auth, network, destination, and local socket.
+- Ready but not draining: inspect retry clocks, expired leases, scheduling, and dependence on fresh hook wakeups.
+- Accepted but resent: inspect durable bookkeeping, notification identity, and ambiguous delivery.
 
-- retain a redacted dead-letter record;
-- surface a local health warning;
-- do not loop forever;
-- never include the channel secret in the warning.
+A backlog alone does not establish a CC Connect bug or justify full-disk polling every second.
 
-Remove or mark an item delivered only after the selected CC Connect command or API reports success. A generic success response such as `status=ok` is sufficient evidence of acceptance when that is all the bridge exposes; do not invent a provider message identifier. If a provider cannot offer idempotency, keep a restart-stable local deduplication key and tolerate the narrow uncertainty after a network timeout. The key must not depend on rendered title or summary text.
+## Desktop exit policies
 
-## Rate and reply limits
+| Policy | Behavior |
+| --- | --- |
+| Stop strictly with Desktop | Preserve pending items until the next start; no retries after exit |
+| Bounded sender-only finishing | Stop observation; keep the sender and dedicated bridge until empty or deadline |
+| Independent delivery service | Retry after Desktop closes, with user acceptance of persistent background presence |
 
-Messaging platforms can impose:
+The guide does not choose for the user. Bounded finishing must handle offline state, shutdown, deadline expiry, Desktop reopening, and enqueue at the exit boundary. Retain remaining items and record why; do not wait indefinitely to “send everything.”
 
-- daily quotas;
-- per-minute quotas;
-- limits after several unanswered messages;
-- binding requirements;
-- message-length limits;
-- account-review or bot-policy restrictions.
+Connect/disconnect from shared CC Connect without terminating it or replacing shared configuration. Verify process identity before restarting a dedicated instance.
 
-Measure the selected CC Connect platform and encode its limits in the sender boundary. Do not generalize one platform's behavior to another. Personal Weixin is not recommended for this workload; see [CC Connect platform selection](cc-connect-platform-selection.en.md).
+## Local API and message content
 
-If notifications can be coalesced without losing meaning, combine several terminal results into a digest only when the user explicitly prefers it.
+Prove that the outbound path sends the prepared payload directly, without a CC Connect agent rewriting it or console logs becoming notification text. Prefer argument arrays or stdin over shell interpolation, avoiding special-character and command-line length failures.
 
-## CC Connect boundary
+A Windows field incident had a connected bridge but a failing local socket path. Test creation, connection, and exchange with the actual runtime rather than checking a file or an old ready log. If shortening a path, distinguish an alias from migration and retain one data copy. Measured path lengths are not universal Windows limits.
 
-When using CC Connect:
+## Optional inbound control
 
-- manage its lifecycle independently from task classification;
-- verify that the bridge is bound to the intended outbound conversation;
-- store its credentials in a restricted runtime directory;
-- treat bridge stdout as untrusted and redact before logging;
-- health-check it before draining the outbox;
-- keep the queue when the bridge is offline.
+The user chooses notification-only or bidirectional behavior; this pack does not mandate default-deny inbound for every product. For existing Desktop conversations, display a short alias in notices and map it locally to a stable task ID. An explicit target followed by “continue” is more reliable than guessing the last-opened window.
 
-Do not make the monitor dependent on an interactive QR flow after every restart. Binding should be a deliberate first-use operation with a clear expired-state recovery path.
+Define senders, actions, targets, busy-state behavior, duplicate protection, and cancellation before enabling it. Do not concatenate arbitrary text into commands. A CC Connect CLI agent session is not an existing Desktop conversation. Verify that the installed continuation interface wakes the intended task, appends to its original history, and does not create the wrong session. Command availability alone proves none of that; mark unverified control as pending implementation.
 
-Prefer a dedicated CC Connect project and fixed destination for notifications. The sender should forward the normalized payload through a proven outbound path without asking another model to expand it, and must never treat CC Connect logs, prompts or agent replies as notification content. Reuse an existing project only after proving that a notification cannot trigger an extra agent conversation; otherwise create a dedicated project. The real test should compare the received text with the local outbox payload.
+## Platform changes and recovery
 
-## Optional inbound boundary
-
-Notification-only is the smallest implementation, but it is a user choice rather than a mandatory repository policy. Ask whether the user wants only notifications or also wants secured inbound control. The notification pipeline must remain independent either way.
-
-Inbound control would require a separate security design:
-
-- authenticated sender allowlist;
-- replay protection;
-- explicit command grammar;
-- user confirmation for sensitive actions;
-- audit log;
-- rate limiting;
-- no arbitrary shell execution.
-
-If inbound control is selected, implement and review those controls as a separate module. Otherwise ignore inbound content. Never enable arbitrary shell execution merely because CC Connect supports interactive sessions.
-
-## Changing CC Connect platforms
-
-Keep the outbox's normalized notification schema independent of the platform. To move from one messenger to another:
-
-1. pause delivery;
-2. ask the user to choose and configure the new CC Connect platform;
-3. choose how to handle queued items;
-4. switch the CC Connect platform and destination transactionally;
-5. send a synthetic test;
-6. disable the old platform credential when the user no longer needs it;
-7. resume the queue.
-
-State detection and JSONL cursors should not change.
+Pause the destination, complete the new binding through [platform selection](cc-connect-platform-selection.en.md), verify a synthetic notice, then switch. Let the user keep old queued items on the old destination, migrate them, or clear them. Version destinations to prevent sending old notices to a new group/account. No need to rebuild state classification or read cursors.

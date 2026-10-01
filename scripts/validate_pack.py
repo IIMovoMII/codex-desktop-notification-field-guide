@@ -45,10 +45,11 @@ TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".txt", ".svg"}
 
 PRIVATE_PATTERNS = {
     "Windows 用户绝对路径": re.compile(
-        r"(?i)\b[a-z]:\\users\\(?!<|%)[^\\\s]+"
+        r"(?i)\b[a-z]:[\\/]users[\\/](?!<|%)[^\\/\s]+"
     ),
     "OpenAI 样式密钥": re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
-    "GitHub 令牌": re.compile(r"\b(?:ghp_|github_pat_)[A-Za-z0-9_]{16,}\b"),
+    "GitHub 令牌": re.compile(r"\b(?:ghp_|gho_|github_pat_)[A-Za-z0-9_]{16,}\b"),
+    "Telegram 样式令牌": re.compile(r"\b[0-9]{8,12}:[A-Za-z0-9_-]{30,}\b"),
     "微信账号标识": re.compile(r"\bwxid_[A-Za-z0-9_]+\b", re.IGNORECASE),
     "已填写的应用密钥": re.compile(
         r"(?i)\bapp[_ -]?secret\b\s*[:=]\s*[\"']?(?!<)[A-Za-z0-9_-]{8,}"
@@ -56,16 +57,6 @@ PRIVATE_PATTERNS = {
 }
 
 LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
-
-SEMANTIC_MARKERS = {
-    "README.md": ("产品说明书", "一句话部署", "正常入口", "CC Connect", "Stop", "入站"),
-    "README.en.md": ("product brief", "Deploy in one prompt", "any normal entry point", "CC Connect", "Stop", "inbound"),
-    "SKILL.md": ("说明书定位", "不要求包装启动命令", "stop_hook_active", "跨重启稳定", "入站模式由用户选择", "安静时长"),
-    "SKILL.en.md": ("Product-brief status", "Do not require a wrapper command", "stop_hook_active", "restart-stable", "notification-only or inbound-enabled", "quiet for a long time"),
-    "references/delivery.md": ("通用成功", "消息编号", "入站"),
-    "references/delivery.en.md": ("generic success", "message identifier", "inbound"),
-}
-
 
 def iter_text_files() -> list[Path]:
     return sorted(
@@ -151,15 +142,22 @@ def validate_privacy(path: Path, text: str, errors: list[str]) -> None:
             errors.append(f"{relative}：可能包含{label}")
 
 
-def validate_semantics(errors: list[str]) -> None:
-    for relative, markers in SEMANTIC_MARKERS.items():
-        path = ROOT / relative
-        if not path.is_file():
-            continue
-        text = path.read_text(encoding="utf-8")
-        for marker in markers:
-            if marker not in text:
-                errors.append(f"{relative}：缺少闭环语义标记：{marker}")
+def validate_bilingual_links(errors: list[str]) -> None:
+    # Reference coverage only: matching links do not prove matching meaning.
+    def local_targets(path: Path) -> set[str]:
+        targets = {normalize_link(raw) for raw in LINK_PATTERN.findall(path.read_text(encoding="utf-8"))}
+        own_name = path.name.replace(".en.md", ".md")
+        return {
+            value.replace(".en.md", ".md") for value in targets
+            if value and not value.startswith(("http://", "https://", "mailto:"))
+            and value.replace(".en.md", ".md") != own_name
+        }
+
+    for relative in sorted(CHINESE_PRIMARY):
+        zh = ROOT / relative
+        en = zh.with_name(zh.stem + ".en.md")
+        if zh.is_file() and en.is_file() and local_targets(zh) != local_targets(en):
+            errors.append(f"{relative}：中英文的本地参考入口不一致")
 
 
 def main() -> int:
@@ -167,7 +165,7 @@ def main() -> int:
     validate_required(errors)
     validate_skill(errors)
     validate_chinese_primary(errors)
-    validate_semantics(errors)
+    validate_bilingual_links(errors)
 
     for path in iter_text_files():
         text = path.read_text(encoding="utf-8")
@@ -181,7 +179,7 @@ def main() -> int:
             print(f"- {error}")
         return 1
 
-    print(f"经验包校验通过：{ROOT.name}")
+    print(f"结构／本地链接／双语参考／有限隐私检查通过：{ROOT.name}（不代表程序运行或翻译语义验证）")
     return 0
 
 

@@ -1,64 +1,46 @@
-# CC Connect platform selection
+# CC Connect and platform selection
 
-[CC Connect](https://github.com/chenhg5/cc-connect) is the required delivery bridge for this guide. The user still owns the platform choice. Ask before installing, binding or changing any channel.
+[中文](cc-connect-platform-selection.md)
 
-## Required user choices
+Inspect existing CC Connect versions, projects, and lifecycle first. Existing configuration can be reused, but it does not choose the platform, destination, or inbound behavior for the user.
 
-After read-only discovery, ask only for choices the machine cannot answer:
+## Ask for choices
 
-> Which CC Connect platform should receive Codex Desktop notifications: official QQ Bot, Telegram, Feishu/Lark, personal Weixin, WeCom, or another platform supported by the installed version?
+Ask once about unresolved choices: destination, dedicated or shared bridge, and notification-only or control of existing Desktop conversations. Do not repeat established choices. Enter credentials through local UI or restricted configuration, not the conversation.
 
-Also ask whether to use a dedicated or existing CC Connect project, and whether the user wants notification-only operation or a separately secured inbound-control module.
+| Platform | Verify |
+| --- | --- |
+| [QQ Bot Official](https://github.com/chenhg5/cc-connect/blob/main/docs/qqbot.md) | Installed-version support, account eligibility, target session, and actual quota |
+| [Telegram](https://github.com/chenhg5/cc-connect/blob/main/docs/telegram.md) | Bot credentials, recipient/group, network access, and inbound permissions |
+| [Feishu/Lark](https://github.com/chenhg5/cc-connect/blob/main/docs/feishu.md) | App permissions, destination, and organization restrictions |
+| [QQ OneBot](https://github.com/chenhg5/cc-connect/blob/main/docs/qq.md) | Additional OneBot implementation and account/runtime/maintenance cost |
+| [Personal Weixin iLink](https://github.com/chenhg5/cc-connect/blob/main/docs/weixin.md) | Proactive-send limits; not recommended for unattended alerts |
+| WeCom or other platforms | Consult installed-version documentation instead of inferring capability from the name |
 
-Show only platforms that are actually supported by the detected CC Connect release. Explain the practical differences and wait for a selection. Do not infer the answer from stale config, an old binding or the user's operating system.
+These links track upstream main; match documentation to the installed release. Do not conflate QQ Bot Official with OneBot, or personal Weixin with WeCom.
 
-## Recommended order
+## Why personal Weixin is not recommended
 
-| Platform | Connection and setup | Guidance |
+Merged upstream [PR #1643](https://github.com/chenhg5/cc-connect/pull/1643) reports proactive-send budgets/throttling and that repeated attempts during throttling can worsen it. This is time-specific upstream testing, not a permanent server contract. A local deployment also observed delivery stopping after a batch of unanswered messages.
+
+Do not promise a fixed ten-message limit, a universal daily number, or guaranteed recovery from one reply. If selected, inspect current quota protection, retain pending messages, wait on throttling, and explain why this route is unsuitable for continuously reliable unattended alerts.
+
+Other platforms also have limits. Verify quota by account, destination type, and current responses rather than transferring one platform's behavior to another.
+
+## First installation and binding
+
+| Starting point | Next step | Completion evidence |
 | --- | --- | --- |
-| [QQ Bot Official](https://github.com/chenhg5/cc-connect/blob/main/docs/qqbot.md) | Official API v2 over WebSocket; no public IP; developer verification required | Preferred QQ route when the user can register an official bot |
-| [Telegram](https://github.com/chenhg5/cc-connect/blob/main/docs/telegram.md) | Bot API long polling; no public IP; requires Telegram network access | Good general-purpose choice |
-| [Feishu/Lark](https://github.com/chenhg5/cc-connect/blob/main/docs/feishu.md) | WebSocket; no public IP; app setup and permissions required | Good stable choice for personal or team workflows |
-| [QQ OneBot](https://github.com/chenhg5/cc-connect/blob/main/docs/qq.md) | Requires NapCat or another OneBot implementation | Offer only after explaining the extra component and non-official risk |
-| [Personal Weixin](https://github.com/chenhg5/cc-connect/blob/main/docs/weixin.md) | Personal WeChat through iLink HTTP long polling and QR login | Do not recommend for unattended notifications |
-| WeCom or another built-in platform | Depends on the installed release | Evaluate its official setup guide and the user's account situation |
+| No CC Connect | Use an upstream build for the chosen OS/scope; document runtime data and removal | Starts with an identifiable version |
+| Existing shared instance | Establish project/destination, config ownership, and inbound behavior; integrate incrementally | Other uses keep working |
+| No platform binding | User completes local login/credentials and required verification | A target session exists for an outbound attempt |
+| Expired binding/credentials | Pause the destination and rebind without discarding the queue | Verify the same or explicitly changed destination |
+| Configured but untested | Send one agreed non-sensitive notice | Visible on the phone and matches the outbox |
 
-The upstream repository supports more platforms than this shortlist. The shortlist is a decision aid, not a frozen capability list.
+Generic bridge success does not establish user receipt. First-use testing verifies destination and visible content. On binding failure, hand off a pending-binding state and recovery action rather than claiming deployment success.
 
-## Personal Weixin warning
+## Reuse and inbound behavior
 
-Personal Weixin through iLink has server-controlled outbound and session constraints that conflict with reliable unattended notification delivery:
+Shared instances outlive Desktop, and existing project configuration must not be reset wholesale. Even a dedicated project needs an inbound-policy check: CC Connect can bridge to an agent bidirectionally; only using its send interface does not disable the other direction.
 
-- One source environment observed delivery stop after roughly ten accumulated unanswered notifications. This is anecdotal and version/account-specific, not a platform rule.
-- [Upstream issue #770](https://github.com/chenhg5/cc-connect/issues/770) reports `ret=-2` during long or chunked output; it does not establish a ten-message cap.
-- [Upstream issue #1087](https://github.com/chenhg5/cc-connect/issues/1087) contains an earlier context-token persistence/expiry diagnosis, not the final established cause.
-- [Merged upstream PR #1643](https://github.com/chenhg5/cc-connect/pull/1643) later reported empirical account-level outbound throttling at roughly five to six separate messages per 24 hours, introduced a default safe budget of four, and warned that retries during a penalty can extend it.
-
-The exact number and recovery behavior can change across Weixin and CC Connect versions. The product conclusion remains: **do not select personal Weixin as the default for completion and error notifications that must arrive without user interaction.**
-
-If the user explicitly insists:
-
-1. explain the warning and record the choice;
-2. verify the installed CC Connect version;
-3. minimize messages and prefer a single final summary;
-4. configure the upstream quota controls available in that version;
-5. test beyond one happy-path message;
-6. make local queue retention explicit when the platform refuses delivery;
-7. never promise dependable unattended delivery.
-
-Personal Weixin is not WeCom. WeCom uses a separate platform and protocol; assess it independently.
-
-## Selection and binding flow
-
-1. Inspect the installed CC Connect version and current projects without displaying tokens.
-2. Present supported candidates and the personal-Weixin warning.
-3. Wait for the user's explicit platform choice.
-4. If CC Connect is absent, explain the upstream source, installation method, local files and permissions, then obtain confirmation before installation.
-5. Create or select the user-approved dedicated or existing project and destination. A dedicated project is the safer default, not a hard requirement.
-6. Let the user enter bot credentials through CC Connect's local UI or another local secret path; never ask for secrets in chat.
-7. If inbound control was selected, restrict allowed senders and administrative commands; otherwise ignore inbound content.
-8. Keep task classification and outbound notification delivery independent from any optional inbound agent session.
-9. Send one synthetic notification and require visible confirmation from the user.
-10. Record the platform, CC Connect version and verified delivery ID without storing the credential.
-
-Configure one platform first. Add a second only after the first path, queue behavior and failure handling are proven.
+Let the user ignore ordinary inbound messages or choose controlled interaction. Do not copy examples with broad administrator access, or silently expand “send me alerts” into launching CLI agents. See [delivery](delivery.en.md) for existing Desktop conversation control.

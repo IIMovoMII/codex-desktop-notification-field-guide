@@ -1,153 +1,59 @@
-# State machine
+# State classification and deduplication
 
-The state machine converts imperfect, out-of-order evidence into one user-facing result per task.
+[中文](state-machine.md)
 
-## Normalized events
+Combine evidence by task and turn. Normalize error text, hooks, and process changes instead of sending a message from each source.
 
-Translate version-specific hooks and JSONL records into a small internal vocabulary:
+## States and evidence
 
-~~~text
-task_seen
-turn_started
-progress
-completion_candidate
-structured_error
-unknown_error
-user_interrupted
-approval_requested
-input_requested
-desktop_started
-desktop_exited
-maintenance_started
-maintenance_ended
-~~~
+| Result | Required evidence | Next action |
+| --- | --- | --- |
+| Running | New activity or no terminal evidence yet | Wait for events; silence never establishes a stuck task |
+| Awaiting approval/input | An explicit, currently active request | Notify once per request; clear on response or resumption |
+| Settling candidate | Stop, possible exit, or pending late records | Await independent terminal evidence; allow cancellation |
+| Completed | Explicit success for this turn | Close the turn and commit one terminal notification |
+| Failed | Explicit turn failure or exhausted retries | Close the turn and send a sanitized error category |
+| User interrupted | Explicit user cancellation/pause evidence | Distinguish from automatic stopping |
+| System stopped | Proven non-user stop evidence | Explain that attention is needed without inventing a user action |
+| Unknown outcome | Observation cannot continue and settling yields no terminal evidence | Ask for review without inventing a failure cause |
 
-Each event should carry:
+Mark generic input waiting unsupported without evidence. Waiting longer is not a new request. If a queued wait alert has already been resolved, cancel it or turn it into a historical summary according to the agreed policy.
 
-- task key;
-- turn key when available;
-- event key;
-- source;
-- local timestamp;
-- sanitized evidence category;
-- schema version.
+## Stop races
 
-Avoid carrying prompt or response bodies through the state engine.
+Neither `Stop` nor `stop_hook_active` alone proves completion. Another matching hook may continue the turn. Subsequent activity cancels the old candidate; only independent success, failure, or interruption evidence determines the outcome.
 
-## Task states
+A short settling window collects late evidence; it does not mean “declare success after a few seconds.” With only Stop and a running Desktop, continue observing. If observation must end, report an unknown outcome. SessionEnd does not replace a per-turn terminal event.
 
-One useful model is:
+## Error recovery and ordering
 
-~~~mermaid
-stateDiagram-v2
-    [*] --> Observed
-    Observed --> Running: turn_started
-    Running --> WaitingApproval: approval_requested
-    Running --> WaitingInput: input_requested
-    WaitingApproval --> Running: activity_resumed
-    WaitingInput --> Running: activity_resumed
-    Running --> Settling: completion_candidate or desktop_exited
-    Settling --> Completed: completion_confirmed
-    Settling --> Failed: error_confirmed
-    Settling --> Interrupted: interruption_confirmed
-    Settling --> SystemStopped: automatic_stop_confirmed
-    Settling --> NeedsReview: exit_without_terminal_evidence
-    Running --> Failed: structured_error
-    Running --> Interrupted: user_interrupted
-    Running --> SystemStopped: automatic_stop
-    Completed --> [*]
-    Failed --> [*]
-    Interrupted --> [*]
-    SystemStopped --> [*]
-    NeedsReview --> [*]
-~~~
+Separate a single failed tool operation, final Codex turn failure, and bridge delivery failure. A 503 or timeout may be undergoing automatic retries. Clear the candidate when recovery leads to success and notify the final outcome only.
 
-Adapt names to observed events. The important properties are explicit terminal states and a short, bounded settling state for late evidence.
+Prefer structured status, error codes, and recovery relationships. Text-based classification must not mistake a quoted error in a reply for an actual failure. Categories can include auth, quota, server, network, model, tool, data format, and unknown. An unknown cause does not prevent reporting a proven failure.
 
-## Precedence
+Establish task/turn membership and causal order before applying locally tested conflict rules. A universal “any error wins over success” rule can let an old recoverable error override later success. Late terminal evidence for an old turn must not clear a newer turn.
 
-Define deterministic precedence for conflicting signals. An example:
+If stronger evidence arrives after delivery, retain the original record and optionally send one correlated correction. Do not silently rewrite sent history or repeatedly create new alerts.
 
-1. explicit structured failure;
-2. explicit user interruption;
-3. explicit version-proven automatic stop;
-4. explicit successful completion;
-5. validated unknown terminal failure;
-6. process disappearance is only a weak candidate; after bounded settling without terminal evidence, finalize as `NeedsReview`, not `Failed`.
+## Process exit and maintenance
 
-The correct order depends on observed Codex semantics. Record why an event wins and test both arrival orders.
+When Desktop's main application disappears, create exit candidates only for currently active tasks. Drain late writes briefly. Cancel when the process returns and the task continues; otherwise resolve from terminal evidence or report unknown. An auxiliary-service restart must not create alerts for every task.
 
-`Stop` by itself must never produce a success notification. Move into `Settling`, consume the bounded stream of late events, and cancel the candidate if any continuation or new activity appears. This protects against another concurrently running `Stop` hook requesting more work after the notification hook has already started. Confirm completion only from an independent, version-proven terminal record.
+An auth switcher or updater can write a short-lived maintenance marker before exit with owner, scope, and expiry. Suppress only planned-exit candidates, not explicit errors, interruptions, or wait requests. Clear it after maintenance and expire it automatically.
 
-Classify sanitized error families such as auth/permission, endpoint, rate limit, server, network/proxy/DNS/TLS/WebSocket, model, tool/permission, data shape and unknown. A transient 503 or timeout is only an error candidate while Codex is retrying. If progress resumes and the turn completes, clear it and notify completion only. Finalize failure or `SystemStopped` only after retry exhaustion, explicit termination or automatic-pause evidence. Never label a system stop as user interruption; use `NeedsReview` when the actor cannot be proven.
+## Stable identity and commit ordering
 
-## Waiting states
-
-Approval and input waits are actionable, not failures.
-
-Notify once when the task enters the waiting state. If it resumes and later requests attention again, issue a new notification only when the request has a distinct event key or turn key.
-
-Do not infer waiting merely because no new bytes arrive. Require an explicit hook, structured JSONL record or another version-proven signal.
-
-There is no assumed universal generic input-request hook. If the installed version does not expose a proven signal, report input-wait notification as unsupported instead of guessing.
-
-## No timer-based stuck state
-
-Long silence is normal for some tasks. Therefore:
-
-- do not transition from Running to Failed or Stuck based only on elapsed time;
-- do not send repeated reminders while a task remains quiet;
-- do monitor the health of the local observer separately;
-- allow a user-configurable reminder only as an explicit product feature, disabled by default and labeled as a timer, not failure detection.
-
-## Settling window
-
-Hooks, file writes and process events can arrive in different orders. Use a short bounded window after a completion candidate or Desktop exit:
-
-- continue consuming already queued events;
-- re-read only changed files;
-- allow stronger evidence to replace a weaker candidate;
-- finalize once the window closes or an unambiguous terminal event arrives.
-
-This is event convergence, not a long-task timeout.
-
-If Desktop restarts and the same task resumes before an exit candidate is finalized, cancel that candidate. Otherwise, when the bounded drain ends with no terminal evidence, emit “Desktop exited; result unknown, please review” and enter `NeedsReview`.
-
-## Idempotency and deduplication
-
-Derive a stable notification key from fields such as:
+Keep one terminal notification slot per turn, for example:
 
 ~~~text
-task_key + turn_key + terminal_state + source_event_key
+terminal_key = task_identity + turn_identity + "terminal"
+waiting_key  = task_identity + turn_identity + request_identity
 ~~~
 
-Persist emitted keys in a durable ledger. Replaying a hook, restarting the monitor or rereading a late JSONL line must not generate a duplicate. The key must be derived from stable event identity and must not change when a title, summary or display language changes.
+State labels, titles, excerpts, error wording, and duplicated source events must not create another terminal slot. Update classification before delivery; a post-delivery correction has its own correlated identity. Without a stable turn ID, establish a persistent recoverable substitute instead of generating a new random identity on every replay.
 
-Do not deduplicate purely on human-readable text; two different turns can have the same title and message.
+Only the current active turn participates in exit inference. Retire superseded unfinished turns so one exit cannot fan out into old abnormal alerts. Preserve genuine queued or delivered historical notices; retirement does not mean deletion.
 
-Track only the current unfinished turn for each session. If a later turn starts, retire any superseded non-terminal turn silently. A later Desktop exit must not turn every stale turn into a separate abnormal alert.
+Cursors, decisions, outbox, and deduplication ledger must recover without missing records. Use a shared transaction or persist a pending decision before idempotent enqueue. “Save state, then queue” is still lossy without recovery of the gap.
 
-## Planned maintenance
-
-A cooperating local tool can write a short-lived marker containing:
-
-- maintenance ID;
-- start time;
-- expected maximum duration;
-- allowed process set;
-- no credential or route detail.
-
-When Desktop exits during a valid marker, suppress crash classification but continue processing explicit task errors. Expired markers must not hide genuine later failures.
-
-## State persistence
-
-Persist only what restart recovery needs:
-
-- current non-terminal state;
-- cursor references;
-- last event key;
-- emitted notification keys;
-- settling deadline;
-- maintenance marker reference.
-
-Use atomic writes and schema versions. On corrupt state, rebuild from a bounded recent event window rather than scanning all history blindly.
+Local deduplication does not guarantee one remote delivery; see the uncertainty window in [delivery](delivery.en.md).

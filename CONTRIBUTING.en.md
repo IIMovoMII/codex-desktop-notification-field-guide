@@ -1,5 +1,7 @@
 # Contributing
 
+[中文](CONTRIBUTING.md)
+
 Contributions should improve the observation and delivery method without turning this repository into a preconfigured bot for one machine.
 
 ## Good contributions
@@ -32,7 +34,10 @@ Contributions should improve the observation and delivery method without turning
 
 ~~~text
 python scripts/validate_pack.py
+python -m unittest discover -s tests
 ~~~
+
+These check the documents and validator, not the notifier runtime.
 
 7. Confirm that no credential, identifier or private conversation appears in the diff.
 

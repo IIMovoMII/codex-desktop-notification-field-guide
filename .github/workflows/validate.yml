@@ -22,3 +22,6 @@ jobs:
 
       - name: 校验结构、语言、链接与隐私
         run: python scripts/validate_pack.py
+
+      - name: 验证文档检查器的边界
+        run: python -m unittest discover -s tests
