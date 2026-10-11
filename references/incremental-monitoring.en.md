@@ -26,6 +26,10 @@ Windows testing exposed two independent issues: a single early process snapshot 
 
 A startup lock only protects startup. Enforce single-instance ownership throughout monitor execution, including races with manual repair. Respect pause/disable state so hooks do not restart a deliberately disabled notifier.
 
+### Process identity and stale state
+
+Windows reuses PIDs. State for the monitor and CC Connect should persist at least an identity version, a normalized executable path, and process creation time, and compare them on every hook wake-up, health check, and stop operation. A PID that merely exists, or an old “API server started” line, is not proof that the service is live. Treat legacy state without identity fields as invalid and let the next valid hook relaunch it under the startup lock. Preserve cursors, the outbox, and backlog during recovery; do not force-send historical events whose source can no longer be verified.
+
 “Wait up to 30 seconds for discovery, then attempt service startup three times” is an example, not a universal setting or a 30-second total-runtime guarantee.
 
 ## Test the actual command execution

@@ -66,6 +66,8 @@ The [agent instructions](SKILL.en.md) cover four recurring problems: missed star
 
 Most field evidence comes from Windows. Other systems can reuse the ideas with native equivalents and fresh validation. Retest after Codex or CC Connect updates; this is not a claim of compatibility with every version or platform.
 
+A recent real incident is included as a lesson: Windows can reuse a stopped service's old PID for an unrelated process, and an old log line can make a dead bridge look ready. A reliable implementation should verify the executable identity and process creation time, then re-check interface readiness whenever it wakes; a PID or a historical “started” line is not proof of a live service.
+
 ## Contributing
 
 Bring versioned, reproducible lessons while preserving implementation freedom. Do not upload real conversations, configuration, or bot credentials. See [contributing](CONTRIBUTING.en.md) and [security](SECURITY.en.md).

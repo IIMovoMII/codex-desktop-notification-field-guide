@@ -47,6 +47,12 @@ Carry forward explicit choices and authorization without repeatedly asking permi
 - `SessionEnd` always runs synchronously even when configured with `async = true`, and its default timeout is short. Do not start a resident monitor, send network delivery, or run heavy work there; put that work on an event that supports async execution and keep `SessionEnd` to quick local cleanup.
 - Installed hooks, trusted hooks, live processes, ready interfaces, and phone-visible delivery are different states. Keep queryable local diagnostics for failures.
 
+### A PID is not a process identity
+
+Windows can reuse a PID after a process exits. A state file containing only a still-existing PID can therefore mistake a Codex renderer, `conhost.exe`, or another unrelated process for the monitor or CC Connect. An old “API server started” line can make a dead bridge look ready as well. Persist a versioned identity record for each managed service, including at least its normalized executable path and process creation time; re-check it on every hook wake-up, health check, and stop operation. Treat legacy state without identity fields as untrusted and let the next valid event perform bounded self-recovery instead of killing or reusing an unknown PID.
+
+Apply this check to both the monitor and the message bridge. After the process identity matches, verify interface readiness separately; historical logs are diagnostic clues only. Recovery must preserve the local queue and cursors, not clear backlog or force-send an old event whose transcript is gone. Add regression fixtures for PID reuse, legacy state, and stale readiness logs so “a process exists” cannot silently suppress startup again.
+
 ## Handoff
 
 Deliver the chosen local implementation, short usage notes, and repeatable diagnosis, disable, update, and uninstall procedures. Record versions, supported states, real tests passed, and checks still requiring a restart or user observation.

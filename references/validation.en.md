@@ -20,6 +20,7 @@ Manually invoking a hook from the current window is not a real Desktop cold star
 | Area | Meaningful cases |
 | --- | --- |
 | Startup | Temporarily invisible process, partial metadata, concurrent hooks, alive-but-unready service, CLI/subagent, missing config, lock release after helper exit |
+| Process identity | PID reused by another process, legacy state without an identity version, stale “API started” log after service exit; confirm relaunch rather than a false online result |
 | State | Concurrent Stop continuation, candidate cancellation, transient 503 then success, final failure, completion/interruption order, late old turn, long silence |
 | Waiting | Duplicate request, response/resume, resolved-but-unsent alert, new request |
 | Exit | Main app exit, auxiliary restart, multiple windows, marker expiry, late writes, reopening |
@@ -38,6 +39,7 @@ Test different orders to expose actual races, not the presence of implementation
 | `SessionEnd` says an async hook is running synchronously, or exits with code 1 | The event is always synchronous with a short timeout; inspect for network, resident, or heavy work | Move heavy work to an event that supports async execution; keep `SessionEnd` quick local cleanup and verify a real exit |
 | Hooks written but not invoked | Active layer, trust, loaded definition | Real triggering, not file inspection alone |
 | Process alive but no messages | Process identity, endpoint readiness, queue timing/errors | Real connection and synthetic delivery in that instance |
+| `doctor` says online but hooks no longer relaunch | Identity version, executable, and creation time in state; a recent startup line is not enough | PID-reuse fixture is rejected and the next valid hook self-recovers |
 | Batch arrives after restart | Sender lifetime, backoff, exit policy | Catch-up at the agreed time |
 | Many notices for one incident | Current turn, terminal slot, ledger, uncertain delivery | Replay/restart without creating new local notices |
 | Unknown events after upgrade | Version and minimal field differences | Verify affected states after adapter update |
