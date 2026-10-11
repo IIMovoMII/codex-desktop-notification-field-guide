@@ -27,6 +27,7 @@ Manually invoking a hook from the current window is not a real Desktop cold star
 | Persistence | Partial line, replacement, truncation, path aliases, overflow, sleep/resume, crash between cursor/state/enqueue |
 | Delivery | Unready endpoint, timeout, quota, expired auth, crash after acceptance, backlog drain, destination change, shared-instance survival |
 | Content | Synthetic secrets, paths, long text, quotes/newlines, changed titles without duplicate notices |
+| Resources | Synthetic long replies, many completed turns, and long idle runs; verify bounded active evidence, released terminal bodies, and measured CPU/memory |
 | Inbound, if selected | Explicit target, duplicate titles, stale mapping, busy task, unauthorized/replayed message, real continuation of the original task |
 
 Test different orders to expose actual races, not the presence of implementation function names. Use synthetic privacy values. Measure idle CPU, bytes read, startup latency, and queue age instead of claiming unmeasured “zero overhead.”

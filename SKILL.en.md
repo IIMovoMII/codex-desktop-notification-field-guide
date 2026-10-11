@@ -53,6 +53,8 @@ Windows can reuse a PID after a process exits. A state file containing only a st
 
 Apply this check to both the monitor and the message bridge. After the process identity matches, verify interface readiness separately; historical logs are diagnostic clues only. Recovery must preserve the local queue and cursors, not clear backlog or force-send an old event whose transcript is gone. Add regression fixtures for PID reuse, legacy state, and stale readiness logs so “a process exists” cannot silently suppress startup again.
 
+A long-lived monitor must not retain every full reply forever. Bound reply excerpts and error candidates for active turns; after rendering a terminal notification, release the body, error list, and display context while keeping only a small terminal tombstone for deduplication. Use synthetic long replies and many completed turns to measure memory and confirm it does not grow linearly with history. This bounds local state only; it does not alter the message queue or Codex history.
+
 ## Handoff
 
 Deliver the chosen local implementation, short usage notes, and repeatable diagnosis, disable, update, and uninstall procedures. Record versions, supported states, real tests passed, and checks still requiring a restart or user observation.

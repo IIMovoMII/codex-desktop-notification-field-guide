@@ -33,6 +33,8 @@ Delivery goes through [CC Connect](https://github.com/chenhg5/cc-connect). You c
 
 **Local decisions without another model call.** State detection and message preparation can run locally without extra model tokens. Messenger delivery still needs a network connection. Remotely continuing a Codex task uses that task's model allowance as usual.
 
+**Suitable for long-lived runs.** Active turns retain bounded evidence, and terminal turns release full replies so monitor memory does not grow with every historical task.
+
 **Suitable for long tasks.** Hours of silence should not be mistaken for a stuck task.
 
 ## Deploy in one prompt
