@@ -35,6 +35,7 @@ Test different orders to expose actual races, not the presence of implementation
 | Symptom | Evidence first | Acceptance after repair |
 | --- | --- | --- |
 | Hook `exit code 1`, no application log | Actual shell, syntax, paths, imports, stdin decoding | Reproduce in the same execution context, then test SessionStart/Stop |
+| `SessionEnd` says an async hook is running synchronously, or exits with code 1 | The event is always synchronous with a short timeout; inspect for network, resident, or heavy work | Move heavy work to an event that supports async execution; keep `SessionEnd` quick local cleanup and verify a real exit |
 | Hooks written but not invoked | Active layer, trust, loaded definition | Real triggering, not file inspection alone |
 | Process alive but no messages | Process identity, endpoint readiness, queue timing/errors | Real connection and synthetic delivery in that instance |
 | Batch arrives after restart | Sender lifetime, backoff, exit policy | Catch-up at the agreed time |

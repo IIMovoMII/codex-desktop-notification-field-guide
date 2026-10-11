@@ -12,7 +12,7 @@ Separate Codex task/turn identity, notification identity, and CC Connect destina
 
 ## What hooks establish
 
-Key points checked against the [OpenAI Hooks reference](https://learn.chatgpt.com/docs/hooks) on 2026-10-02:
+Key points checked against the [OpenAI Hooks reference](https://learn.chatgpt.com/docs/hooks) on 2026-10-11:
 
 | Signal | Use and limit |
 | --- | --- |
@@ -20,12 +20,14 @@ Key points checked against the [OpenAI Hooks reference](https://learn.chatgpt.co
 | `Stop` | Matching command hooks run concurrently and another may continue the turn; only a settling candidate |
 | `stop_hook_active` | Describes prior continuation, not whether other hooks have finished |
 | `Interrupt`, approval, or input signals | Verify support locally; interruption and waiting require explicit evidence |
-| `SessionEnd` | Session cleanup; always synchronous, not a per-turn completion hook |
+| `SessionEnd` | Session cleanup; always synchronous, not a per-turn completion hook. `async = true` does not make it background; its default timeout is short and it is suitable only for quick local cleanup |
 | `transcript_path` | May be null; the transcript format is not a stable hook interface |
 
 Non-managed hooks require trust; changing a definition may require review again. Inspect existing `hooks.json` and inline `[hooks]` in the same layer, reuse the active representation, and avoid duplicate installation or removing others' hooks.
 
 Hooks write minimal events, optionally start a helper, and return promptly using the event's output contract. They do not perform network delivery, full-history scans, or model inference. Keep diagnostic text out of protocol stdout.
+
+`SessionEnd` is a common misconfiguration point: do not start a resident monitor, send network messages, or wait for heavy cleanup there. If Codex reports that an asynchronous `SessionEnd` is still being run synchronously, or reports `hook exited with code 1`, move the heavy work to `SessionStart`, `Stop`, or another event that supports asynchronous execution. Keep `SessionEnd` bounded, quick, and local, then verify both a real Desktop cold start and a real exit.
 
 ## Build versioned evidence
 

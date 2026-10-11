@@ -44,6 +44,7 @@ Carry forward explicit choices and authorization without repeatedly asking permi
 - Deduplicate using stable task/turn identities. Terminal labels, titles, excerpts, and error wording do not identify a new event.
 - Persistence means local retention. A stopped sender cannot retry. Define exit behavior before claiming catch-up.
 - On Windows, test with Codex's actual shell. A cmd test does not establish PowerShell compatibility. Verify absolute paths, quoting, UTF-8, and detached-child survival.
+- `SessionEnd` always runs synchronously even when configured with `async = true`, and its default timeout is short. Do not start a resident monitor, send network delivery, or run heavy work there; put that work on an event that supports async execution and keep `SessionEnd` to quick local cleanup.
 - Installed hooks, trusted hooks, live processes, ready interfaces, and phone-visible delivery are different states. Keep queryable local diagnostics for failures.
 
 ## Handoff
